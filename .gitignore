@@ -1,0 +1,9 @@
+node_modules/
+config.json
+*.local.json
+workspace.json
+workspace.json.tmp
+.env
+.env.*
+!.env.example
+npm-debug.log*

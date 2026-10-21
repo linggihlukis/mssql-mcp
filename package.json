@@ -1,0 +1,19 @@
+{
+  "name": "mssql-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stdio MCP server providing DB Atelier-compatible tools for Microsoft SQL Server.",
+  "type": "module",
+  "bin": {
+    "mssql-mcp": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "lint": "node --check src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "mssql": "^12.7.2"
+  }
+}

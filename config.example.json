@@ -1,0 +1,18 @@
+{
+  "connections": [
+    {
+      "name": "sqlserver_5",
+      "db_type": "mssql",
+      "host": "172.16.0.5",
+      "port": 1433,
+      "database": "uranus",
+      "username_env": "MSSQL_MCP_SQLSERVER_5_USERNAME",
+      "password_env": "MSSQL_MCP_SQLSERVER_5_PASSWORD",
+      "read_only": true,
+      "options": {
+        "encrypt": false,
+        "trustServerCertificate": true
+      }
+    }
+  ]
+}
