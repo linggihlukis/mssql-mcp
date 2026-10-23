@@ -3,6 +3,21 @@ import { AppError } from '../errors.js';
 
 const DEFAULT_SCHEMA = 'dbo';
 
+// Object names only. list_tables answers a question about objects, so it must not join columns:
+// the full catalog query returns one row per column (3,622 on Uranus) to produce 178 objects, and
+// it runs two OUTER APPLY blocks that no caller of this query reads.
+const OBJECTS_SQL = `
+      SELECT
+        s.name AS schema_name,
+        o.name AS object_name,
+        o.type_desc AS object_type
+      FROM sys.objects o
+      JOIN sys.schemas s ON s.schema_id = o.schema_id
+      WHERE o.type IN ('U', 'V')
+        AND s.name = @schema
+      ORDER BY s.name, o.name;
+    `;
+
 function schemaName(value) {
   return value || DEFAULT_SCHEMA;
 }
@@ -92,6 +107,14 @@ async function queryCatalog(database, args) {
   return result.recordset;
 }
 
+async function queryObjects(database, args) {
+  const pool = await database.getPool(args.connection, args.database);
+  const request = pool.request();
+  request.input('schema', schemaName(args.schema));
+  const result = await request.query(OBJECTS_SQL);
+  return result.recordset;
+}
+
 function normalizeType(row) {
   return String(row.data_type || 'unknown').toLowerCase();
 }
@@ -125,18 +148,11 @@ export function createDatabaseTools({ database }) {
     },
 
     list_tables: async ({ connection, database: databaseName, schema }) => {
-      const rows = await queryCatalog(database, { connection, database: databaseName, schema });
-      const uniqueObjects = new Map();
-      for (const row of rows) {
-        const key = `${row.schema_name}.${row.object_name}`;
-        if (!uniqueObjects.has(key)) {
-          uniqueObjects.set(key, {
-            name: row.object_name,
-            type: row.object_type === 'VIEW' ? 'view' : 'table',
-          });
-        }
-      }
-      return toolResult([...uniqueObjects.values()]);
+      const rows = await queryObjects(database, { connection, database: databaseName, schema });
+      return toolResult(rows.map((row) => ({
+        name: row.object_name,
+        type: row.object_type === 'VIEW' ? 'view' : 'table',
+      })));
     },
 
     describe_table: async ({ connection, database: databaseName, schema, table }) => {
