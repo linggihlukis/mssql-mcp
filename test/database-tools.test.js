@@ -19,6 +19,7 @@ function fakeDatabase() {
   ];
   return {
     calls,
+    getConnection: () => ({ database: 'master', max_result_bytes: 262_144 }),
     getPool: async (_connection, _database) => ({
       request: () => ({
         input: (name, value) => calls.push(['input', name, value]),
@@ -52,6 +53,7 @@ test('database tools — describe_table — returns DB Atelier-compatible column
 
 test('database tools — list_tables — maps each object to a name and a table/view type', async () => {
   const database = {
+    getConnection: () => ({ database: 'master', max_result_bytes: 262_144 }),
     getPool: async () => ({
       request: () => ({
         input() {},
@@ -79,6 +81,7 @@ test('database tools — list_tables — asks the server for objects, not for co
   // silently doubling the latency of a tool an agent calls often.
   const statements = [];
   const database = {
+    getConnection: () => ({ database: 'master', max_result_bytes: 262_144 }),
     getPool: async () => ({
       request: () => ({
         input() {},

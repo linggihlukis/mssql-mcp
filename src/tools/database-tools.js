@@ -1,5 +1,6 @@
 import { quoteIdentifier } from '../database.js';
 import { AppError } from '../errors.js';
+import { listResult, maxBytesFor, toolResult } from './tool-result.js';
 
 const DEFAULT_SCHEMA = 'dbo';
 
@@ -20,14 +21,6 @@ const OBJECTS_SQL = `
 
 function schemaName(value) {
   return value || DEFAULT_SCHEMA;
-}
-
-function resultText(value) {
-  return JSON.stringify(value, null, 2);
-}
-
-function toolResult(value) {
-  return { content: [{ type: 'text', text: resultText(value) }] };
 }
 
 function catalogQuery({ database, schema, table, pattern, tableFilter }) {
@@ -131,7 +124,14 @@ function normalizeColumn(row) {
 
 export function createDatabaseTools({ database }) {
   return {
-    list_connections: async () => toolResult(await database.listConnectionDetails()),
+    list_connections: async () => {
+      const details = await database.listConnectionDetails();
+      return listResult({
+        list: details,
+        maxBytes: maxBytesFor(database),
+        build: (kept, marker) => (marker.truncated ? { connections: kept, ...marker } : kept),
+      });
+    },
 
     list_databases: async ({ connection }) => {
       const pool = await database.getPool(connection, 'master');
@@ -141,18 +141,27 @@ export function createDatabaseTools({ database }) {
         ORDER BY name;
       `);
       const config = database.getConnection(connection);
-      return toolResult({
-        current: config.database,
-        databases: result.recordset.map((row) => row.name),
+      const names = result.recordset.map((row) => row.name);
+      return listResult({
+        list: names,
+        maxBytes: maxBytesFor(database, connection),
+        build: (kept, marker) => ({ current: config.database, databases: kept, ...marker }),
       });
     },
 
     list_tables: async ({ connection, database: databaseName, schema }) => {
       const rows = await queryObjects(database, { connection, database: databaseName, schema });
-      return toolResult(rows.map((row) => ({
+      const objects = rows.map((row) => ({
         name: row.object_name,
         type: row.object_type === 'VIEW' ? 'view' : 'table',
-      })));
+      }));
+      // The complete list stays a bare array, which is the shape callers already depend on. A
+      // partial list becomes an object carrying the marker, so the two cases cannot be confused.
+      return listResult({
+        list: objects,
+        maxBytes: maxBytesFor(database, connection),
+        build: (kept, marker) => (marker.truncated ? { items: kept, ...marker } : kept),
+      });
     },
 
     describe_table: async ({ connection, database: databaseName, schema, table }) => {
@@ -162,29 +171,39 @@ export function createDatabaseTools({ database }) {
           code: 'TABLE_NOT_FOUND',
         });
       }
-      return toolResult({
-        schema: schemaName(schema),
-        table,
-        columns: rows.filter((row) => row.column_name).map(normalizeColumn),
+      const columns = rows.filter((row) => row.column_name).map(normalizeColumn);
+      return listResult({
+        list: columns,
+        maxBytes: maxBytesFor(database, connection),
+        build: (kept, marker) => ({
+          schema: schemaName(schema),
+          table,
+          columns: kept,
+          ...marker,
+        }),
       });
     },
 
     execute_sql: async ({ connection, database: databaseName, row_limit: rowLimit, sql }) => {
       const value = await database.query(connection, sql, { database: databaseName, rowLimit });
-      return toolResult(value);
+      // Already bounded by the row limit and the byte cap inside the query layer. This wrapper is the
+      // backstop that keeps every tool on one path, and it passes such a result through untouched.
+      return toolResult(value, { maxBytes: maxBytesFor(database, connection) });
     },
 
     search_columns: async ({ connection, database: databaseName, pattern, schema }) => {
       const rows = await queryCatalog(database, { connection, database: databaseName, schema, pattern });
-      return toolResult({
-        count: rows.length,
-        matches: rows.filter((row) => row.column_name).map((row) => ({
-          column: row.column_name,
-          nullable: Boolean(row.is_nullable),
-          primary_key: Boolean(row.is_primary_key),
-          table: row.object_name,
-          type: normalizeType(row),
-        })),
+      const matches = rows.filter((row) => row.column_name).map((row) => ({
+        column: row.column_name,
+        nullable: Boolean(row.is_nullable),
+        primary_key: Boolean(row.is_primary_key),
+        table: row.object_name,
+        type: normalizeType(row),
+      }));
+      return listResult({
+        list: matches,
+        maxBytes: maxBytesFor(database, connection),
+        build: (kept, marker) => ({ count: matches.length, matches: kept, ...marker }),
       });
     },
 
@@ -201,10 +220,16 @@ export function createDatabaseTools({ database }) {
         if (row.column_name) current.column_count += 1;
         tables.set(key, current);
       }
-      return toolResult({
-        schema: schemaName(schema),
-        tables: [...tables.values()],
-        total_tables: tables.size,
+      const entries = [...tables.values()];
+      return listResult({
+        list: entries,
+        maxBytes: maxBytesFor(database, connection),
+        build: (kept, marker) => ({
+          schema: schemaName(schema),
+          tables: kept,
+          total_tables: entries.length,
+          ...marker,
+        }),
       });
     },
 
@@ -216,7 +241,7 @@ export function createDatabaseTools({ database }) {
           relationships: [],
           total_tables: 0,
           total_relationships: 0,
-        });
+        }, { maxBytes: maxBytesFor(database, connection) });
       }
       const rows = await queryCatalog(database, {
         connection,
@@ -244,12 +269,24 @@ export function createDatabaseTools({ database }) {
           });
         }
       }
-      return toolResult({
-        schema: schemaName(schema),
-        tables: [...grouped.values()],
-        relationships,
-        total_tables: grouped.size,
-        total_relationships: relationships.length,
+      const entries = [...grouped.values()];
+      return listResult({
+        list: entries,
+        maxBytes: maxBytesFor(database, connection),
+        build: (kept, marker) => {
+          // A relationship whose source table was cut is dropped with it, so the graph never refers
+          // to a table the caller did not receive.
+          const names = new Set(kept.map((table) => table.name));
+          const keptRelationships = relationships.filter((link) => names.has(link.from_table));
+          return {
+            schema: schemaName(schema),
+            tables: kept,
+            relationships: keptRelationships,
+            total_tables: entries.length,
+            total_relationships: relationships.length,
+            ...marker,
+          };
+        },
       });
     },
   };

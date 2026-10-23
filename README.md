@@ -256,6 +256,21 @@ read-only error, and the rejection happens before a connection is opened.
 `execute_sql` also clamps `row_limit` to the connection's `max_row_limit`. A query that returns more
 rows than the limit reports `truncated: true`.
 
+### Result size
+
+Every tool result is bounded by `max_result_bytes`, default 262144 bytes. The cap measures the JSON
+text the client receives, indentation included, because that is what crosses the wire.
+
+A result that would exceed the cap keeps the longest prefix of its record list that fits, and adds
+`truncated: true` and `total_count` so a caller can tell a partial answer from a complete one.
+`get_erd` drops any relationship whose source table was cut, so the graph never refers to a table the
+caller did not receive. A result that fits is returned unchanged, with no extra fields.
+
+Set `max_result_bytes` higher if you routinely read wide text columns and the truncation gets in the
+way. The cap exists because a multi-megabyte result stalls an agent's context, not because the
+database cannot return it. With the default, `get_erd` on a 178-table schema returns 133 tables and
+reports itself truncated rather than sending 539646 bytes.
+
 ## Develop
 
 ```bash
@@ -270,6 +285,13 @@ handshake, so it needs permission to start child processes.
 
 `npm run lint` syntax-checks every file under `src/`. It exits non-zero on the first file that fails
 to parse.
+
+Two scripts prove the result cap and the catalog query cost without needing a database:
+
+```bash
+node scripts/check-result-caps.mjs   # every tool stays within max_result_bytes
+node scripts/bench-list-tables.mjs   # list_tables cost, needs a reachable SQL Server
+```
 
 The suite needs permission to start child processes, because one test spawns the real server and
 another runs `node --test` per file. A sandbox that blocks `spawn` fails the suite with `EPERM`

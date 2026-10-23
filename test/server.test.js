@@ -17,7 +17,8 @@ function makeContext() {
       database: 'master',
       available_databases: ['master'],
     }],
-    getConnection: () => ({ database: 'master' }),
+    getConnection: () => ({ database: 'master', max_result_bytes: 262_144 }),
+    listConnections: () => [{ name: 'local' }],
     getPool: async () => ({
       request: () => ({
         input() {},

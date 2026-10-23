@@ -55,7 +55,11 @@ test('WorkspaceStore — foreign parent folder — is rejected', () => {
 test('Workspace tools — DB Atelier result shapes — return compact status objects', async () => {
   const directory = tempDirectory();
   const workspace = new WorkspaceStore(directory);
-  const database = { query: async () => ({}) };
+  const database = {
+    query: async () => ({}),
+    getConnection: () => ({ database: 'master', max_result_bytes: 262_144 }),
+    listConnections: () => [{ name: 'local' }],
+  };
   const tools = createWorkspaceTools({ workspace, database });
 
   const created = textResult(await tools.manage_saved_queries({

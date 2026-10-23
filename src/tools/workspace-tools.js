@@ -1,9 +1,6 @@
 import { quoteIdentifier } from '../database.js';
 import { AppError } from '../errors.js';
-
-function toolResult(value) {
-  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
-}
+import { listResult, maxBytesFor, toolResult } from './tool-result.js';
 
 function required(value, field) {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -35,7 +32,11 @@ export function createWorkspaceTools({ database, workspace }) {
           const queries = workspace.listQueries(scoped.connection, scoped.database).map(
             ({ content, ...summary }) => summary,
           );
-          return toolResult({ count: queries.length, queries });
+          return listResult({
+            list: queries,
+            maxBytes: maxBytesFor(database, scoped.connection),
+            build: (kept, marker) => ({ count: queries.length, queries: kept, ...marker }),
+          });
         }
         case 'get':
           return toolResult(workspace.getQuery(args.queryId));
@@ -55,7 +56,11 @@ export function createWorkspaceTools({ database, workspace }) {
         case 'list': {
           const scoped = scopedArgs(database, args);
           const folders = workspace.listFolders(scoped.connection, scoped.database);
-          return toolResult({ count: folders.length, folders });
+          return listResult({
+            list: folders,
+            maxBytes: maxBytesFor(database, scoped.connection),
+            build: (kept, marker) => ({ count: folders.length, folders: kept, ...marker }),
+          });
         }
         case 'create': {
           const folder = workspace.createFolder(scopedArgs(database, args));
@@ -110,13 +115,24 @@ export function createWorkspaceTools({ database, workspace }) {
         `SELECT TOP (100) * FROM ${safeSchema}.${safeTable};`,
         { rowLimit: 100 },
       );
-      return toolResult({
-        connection,
-        schema: schemaName,
-        table,
-        preview: result,
-        opened: true,
-        note: 'Returned a bounded preview; a stdio server cannot open a GUI window.',
+      const maxBytes = maxBytesFor(database, connection);
+      return listResult({
+        list: result.rows,
+        maxBytes,
+        build: (kept, marker) => ({
+          connection,
+          schema: schemaName,
+          table,
+          preview: {
+            ...result,
+            row_count: kept.length,
+            rows: kept,
+            truncated: result.truncated || marker.truncated,
+          },
+          opened: true,
+          note: 'Returned a bounded preview; a stdio server cannot open a GUI window.',
+          ...marker,
+        }),
       });
     },
   };

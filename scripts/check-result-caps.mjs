@@ -71,7 +71,15 @@ function fakeDatabase() {
         input(name, value) {
           inputs[name] = value;
         },
-        query: async () => {
+        query: async (text) => {
+          // list_connections and list_databases read sys.databases; keep that realistic, or the pin
+          // measures a payload no real server produces.
+          if (/sys\.databases/i.test(text)) {
+            const names = ['master', 'model', 'msdb', 'tempdb', 'Uranus'].map((name) => ({ name }));
+            return request.arrayRowMode
+              ? { columns: [[{ name: 'name', nullable: false, type: { declaration: 'nvarchar' } }]], recordset: names.map((row) => [row.name]) }
+              : { columns: [[{ name: 'name', nullable: false, type: { declaration: 'nvarchar' } }]], recordset: names };
+          }
           const selected = inputs.table
             ? rows.filter((row) => row.object_name === inputs.table)
             : rows;
@@ -145,16 +153,22 @@ for (const [name, call] of cases) {
   }
   const bytes = bytesOf(result);
   const first = result.content[0]?.text ?? '';
+  let parsed;
   let validJson = true;
   try {
-    JSON.parse(first);
+    parsed = JSON.parse(first);
   } catch {
     validJson = false;
   }
-  record(`${name} result fits max_result_bytes`, bytes <= CAP && validJson, {
+  // A capped result must still carry data. A bare notice is a failure, not a cap: it would mean the
+  // tool gave up instead of returning the largest prefix that fits.
+  const carriesData = validJson && parsed !== null && !(parsed.truncated === true && parsed.max_bytes !== undefined);
+  record(`${name} result fits max_result_bytes`, bytes <= CAP && validJson && carriesData, {
     bytes,
     cap: CAP,
     validJson,
+    carriesData,
+    truncated: parsed?.truncated,
     blocks: result.content.length,
   });
 }
