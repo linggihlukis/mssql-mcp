@@ -5,6 +5,7 @@ import { AppError } from './errors.js';
 const DEFAULT_CONFIG_PATH = path.resolve(process.cwd(), 'config.json');
 const DEFAULT_DATA_DIR = path.resolve(process.cwd(), 'data');
 const DEFAULT_MAX_ROW_LIMIT = 500;
+const DEFAULT_MAX_RESULT_BYTES = 262_144;
 const DEFAULT_DOTENV_FILE = '.env';
 const DEFAULT_QUERY_TIMEOUT_MS = 60_000;
 const DEFAULT_CONNECTION_TIMEOUT_MS = 10_000;
@@ -82,6 +83,20 @@ function positiveInteger(value, fallback, field, connectionName) {
   return result;
 }
 
+// A missing key means read-only. Any other value must be a real boolean, because Boolean() turns
+// "" and 0 into false (write-enabled) and "false" into true (read-only), and a config typo must not
+// silently choose which of those you get.
+function readOnlyFlag(value, connectionName) {
+  if (value === undefined) return true;
+  if (typeof value !== 'boolean') {
+    throw new AppError(
+      `Connection "${connectionName}" has an invalid read_only; use true or false.`,
+      { code: 'CONFIG_INVALID' },
+    );
+  }
+  return value;
+}
+
 function normalizeConnection(rawConnection, index, env) {
   if (!rawConnection || typeof rawConnection !== 'object') {
     throw new AppError(`Connection at index ${index} must be an object.`, {
@@ -133,6 +148,12 @@ function normalizeConnection(rawConnection, index, env) {
     'query_timeout_ms',
     name,
   );
+  const maxResultBytes = positiveInteger(
+    rawConnection.max_result_bytes,
+    DEFAULT_MAX_RESULT_BYTES,
+    'max_result_bytes',
+    name,
+  );
   const connectionTimeoutMs = positiveInteger(
     rawConnection.connection_timeout_ms,
     DEFAULT_CONNECTION_TIMEOUT_MS,
@@ -148,8 +169,9 @@ function normalizeConnection(rawConnection, index, env) {
     database,
     username: normalizedUsername,
     password,
-    read_only: Boolean(rawConnection.read_only),
+    read_only: readOnlyFlag(rawConnection.read_only, name),
     max_row_limit: maxRowLimit,
+    max_result_bytes: maxResultBytes,
     query_timeout_ms: queryTimeoutMs,
     connection_timeout_ms: connectionTimeoutMs,
     options: {
@@ -196,6 +218,7 @@ export function loadConfig({ env = process.env } = {}) {
 
 export const configDefaults = Object.freeze({
   maxRowLimit: DEFAULT_MAX_ROW_LIMIT,
+  maxResultBytes: DEFAULT_MAX_RESULT_BYTES,
   queryTimeoutMs: DEFAULT_QUERY_TIMEOUT_MS,
   connectionTimeoutMs: DEFAULT_CONNECTION_TIMEOUT_MS,
 });
