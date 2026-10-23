@@ -81,8 +81,9 @@ MSSQL_MCP_PASSWORD=your-real-password
 | `host`, `port` | required, `1433` | SQL Server address. |
 | `database` | required | Default database for this connection. |
 | `username_env`, `password_env` | required | Environment variable names that hold the credentials. |
-| `read_only` | `false` | Reject write statements before they reach the server. |
+| `read_only` | `true` | Reject write statements before they reach the server. Must be a literal `true` or `false`; a connection opts into writes with `false`. |
 | `max_row_limit` | `500` | Upper bound on rows a tool may return. |
+| `max_result_bytes` | `262144` | Upper bound on the size of one tool result, in bytes. |
 | `query_timeout_ms` | `60000` | Per-request timeout. |
 | `connection_timeout_ms` | `10000` | Connect timeout. |
 
@@ -243,9 +244,14 @@ same guard as `execute_sql`.
 
 ### Read-only connections
 
-When a connection sets `read_only: true`, the server rejects a statement before it reaches the
-server unless it is a single read statement. Writes, DDL, `EXEC`, and multi-statement payloads fail
-with a read-only error, and the rejection happens before a connection is opened.
+`read_only` defaults to `true`. A connection that omits the key, or copies an example without it,
+cannot write. A connection opts into writes by setting `read_only: false` explicitly. The value must
+be a real boolean, so a string like `"false"` fails at startup with `CONFIG_INVALID` instead of
+silently picking a mode.
+
+When a connection is read-only, the server rejects a statement before it reaches the server unless
+it is a single read statement. Writes, DDL, `EXEC`, and multi-statement payloads fail with a
+read-only error, and the rejection happens before a connection is opened.
 
 `execute_sql` also clamps `row_limit` to the connection's `max_row_limit`. A query that returns more
 rows than the limit reports `truncated: true`.
