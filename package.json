@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test",
-    "lint": "node --check src/index.js"
+    "lint": "node scripts/lint.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
