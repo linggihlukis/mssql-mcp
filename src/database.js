@@ -222,24 +222,38 @@ function columnType(column) {
   return typeof typeName === 'string' ? typeName.toLowerCase() : String(typeName ?? 'unknown');
 }
 
-export function normalizeResult(result, rowLimit, totalRows = result.recordset.length) {
-  const columns = Array.isArray(result.columns)
-    ? result.columns.map((metadata, index) => ({
-      name: metadata.name ?? `column_${index + 1}`,
-      data_type: columnType(metadata),
+/**
+ * Column descriptors for the first recordset.
+ *
+ * `mssql` describes columns in two shapes and this function is the one place that knows both.
+ * Object mode gives a map keyed by column name. `arrayRowMode` gives an array with one entry per
+ * recordset, each entry holding that recordset's descriptors in order, which is the shape
+ * `DatabaseManager.query` receives.
+ */
+function columnDescriptors(columns) {
+  if (Array.isArray(columns)) {
+    const recordsetColumns = Array.isArray(columns[0]) ? columns[0] : columns;
+    return recordsetColumns.map((metadata, index) => ({
+      name: metadata?.name || `column_${index + 1}`,
+      data_type: columnType(metadata ?? {}),
       default_value: null,
-      is_nullable: metadata.nullable ?? null,
-      is_primary_key: false,
-      is_foreign_key: false,
-    }))
-    : Object.entries(result.columns ?? {}).map(([name, metadata]) => ({
-      name,
-      data_type: columnType(metadata),
-      default_value: null,
-      is_nullable: null,
+      is_nullable: metadata?.nullable ?? null,
       is_primary_key: false,
       is_foreign_key: false,
     }));
+  }
+  return Object.entries(columns ?? {}).map(([name, metadata]) => ({
+    name,
+    data_type: columnType(metadata ?? {}),
+    default_value: null,
+    is_nullable: null,
+    is_primary_key: false,
+    is_foreign_key: false,
+  }));
+}
+
+export function normalizeResult(result, rowLimit, totalRows = result.recordset.length) {
+  const columns = columnDescriptors(result.columns);
   const rows = result.recordset.slice(0, rowLimit).map((row) =>
     Array.isArray(row) ? row.slice(0, columns.length) : columns.map(({ name }) => row[name]),
   );
