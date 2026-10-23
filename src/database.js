@@ -252,11 +252,38 @@ function columnDescriptors(columns) {
   }));
 }
 
-export function normalizeResult(result, rowLimit, totalRows = result.recordset.length) {
+// The cap must measure what the tool actually ships, not an inner slice. `toolResult` serialises the
+// whole result with JSON.stringify(value, null, 2), so the pretty-printed envelope is what counts.
+function resultBytes(value) {
+  return Buffer.byteLength(JSON.stringify(value, null, 2), 'utf8');
+}
+
+export function normalizeResult(result, rowLimit, totalRows = result.recordset.length, options = {}) {
   const columns = columnDescriptors(result.columns);
   const rows = result.recordset.slice(0, rowLimit).map((row) =>
     Array.isArray(row) ? row.slice(0, columns.length) : columns.map(({ name }) => row[name]),
   );
+  const maxBytes = options.maxBytes;
+  const capped = Number.isFinite(maxBytes) && maxBytes > 0;
+  // Trailing rows are dropped because a multi-megabyte recordset over stdio stalls the client. The
+  // serialized size only grows as rows are added, so the largest fitting prefix is found by binary
+  // search rather than by reserialising once per dropped row.
+  if (capped) {
+    const envelope = (count) => ({
+      columns,
+      row_count: count,
+      rows: rows.slice(0, count),
+      truncated: totalRows > count || count < rows.length,
+    });
+    let low = 0;
+    let high = rows.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (resultBytes(envelope(middle)) <= maxBytes) low = middle;
+      else high = middle - 1;
+    }
+    rows.length = low;
+  }
   return {
     columns,
     row_count: rows.length,
@@ -347,7 +374,9 @@ export class DatabaseManager {
       throw new AppError(`SQL query failed: ${error.message}`, { code: 'QUERY_FAILED', cause: error });
     }
     const recordset = result.recordset ?? [];
-    return normalizeResult({ ...result, recordset }, limit, recordset.length);
+    return normalizeResult({ ...result, recordset }, limit, recordset.length, {
+      maxBytes: connection.max_result_bytes,
+    });
   }
 
   async close() {
