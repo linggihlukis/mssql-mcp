@@ -82,16 +82,18 @@ export async function start() {
   const context = createServer();
   const transport = new StdioServerTransport();
   transport.onerror = (error) => logError('stdio transport failed', error);
-  process.once('SIGINT', async () => {
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     await context.server.close();
     await context.database.close();
     process.exit(0);
-  });
-  process.once('SIGTERM', async () => {
-    await context.server.close();
-    await context.database.close();
-    process.exit(0);
-  });
+  };
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
+  // Clients signal completion by closing stdin; otherwise the process waits out the pool idle timeout.
+  process.stdin.once('end', shutdown);
   await context.server.connect(transport);
 }
 
