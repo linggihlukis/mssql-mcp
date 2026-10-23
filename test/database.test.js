@@ -56,19 +56,37 @@ test('normalizeResult — row limit — returns DB Atelier-compatible result sha
   assert.equal(result.truncated, true);
 });
 
-test('normalizeResult — mssql arrayRowMode metadata — preserves column order and nullability', () => {
+test('normalizeResult — mssql arrayRowMode metadata — reads the per-recordset column array', () => {
+  // Captured from mssql 12.7.2 against SQL Server 2022 with request.arrayRowMode = true:
+  // result.columns is an array with one entry per recordset, and each entry is that recordset's
+  // column descriptors. result.recordset holds value arrays aligned to columns[0].
   const result = normalizeResult({
-    columns: [
-      { name: 'id', type: { declaration: 'int' }, nullable: false },
-      { name: 'name', type: { declaration: 'varchar' }, nullable: true },
-    ],
-    recordset: [[1, 'one']],
-  }, 500, 1);
+    columns: [[
+      { index: 0, name: 'Id', nullable: false, type: { declaration: 'int' } },
+      { index: 1, name: 'Name', nullable: true, type: { declaration: 'varchar' } },
+      { index: 2, name: 'IsEnable', nullable: true, type: { declaration: 'tinyint' } },
+    ]],
+    recordset: [[1, 'BBM1', 1], [2, 'BBM2', 1]],
+  }, 500, 2);
   assert.deepEqual(result.columns, [
-    { name: 'id', data_type: 'int', default_value: null, is_nullable: false, is_primary_key: false, is_foreign_key: false },
-    { name: 'name', data_type: 'varchar', default_value: null, is_nullable: true, is_primary_key: false, is_foreign_key: false },
+    { name: 'Id', data_type: 'int', default_value: null, is_nullable: false, is_primary_key: false, is_foreign_key: false },
+    { name: 'Name', data_type: 'varchar', default_value: null, is_nullable: true, is_primary_key: false, is_foreign_key: false },
+    { name: 'IsEnable', data_type: 'tinyint', default_value: null, is_nullable: true, is_primary_key: false, is_foreign_key: false },
   ]);
-  assert.deepEqual(result.rows, [[1, 'one']]);
+  assert.deepEqual(result.rows, [[1, 'BBM1', 1], [2, 'BBM2', 1]]);
+});
+
+test('normalizeResult — empty recordset — keeps the column descriptors', () => {
+  const result = normalizeResult({
+    columns: [[
+      { index: 0, name: 'Id', nullable: false, type: { declaration: 'int' } },
+      { index: 1, name: 'Name', nullable: true, type: { declaration: 'varchar' } },
+    ]],
+    recordset: [],
+  }, 500, 0);
+  assert.deepEqual(result.columns.map((column) => column.name), ['Id', 'Name']);
+  assert.deepEqual(result.rows, []);
+  assert.equal(result.row_count, 0);
 });
 
 test('assertReadOnlyQuery — SELECT — allows a single read statement', () => {
