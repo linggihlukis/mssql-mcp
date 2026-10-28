@@ -1,5 +1,4 @@
 node_modules/
-.agents/
 config.json
 *.local.json
 workspace.json
