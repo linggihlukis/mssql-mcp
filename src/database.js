@@ -1,256 +1,8 @@
-import sql from 'mssql';
 import { AppError } from './errors.js';
+import { DIALECTS } from './dialects/index.js';
+import { assertReadOnlyQuery, columnDescriptors } from './dialects/mssql.js';
 
-const IDENTIFIER_PART = /^[A-Za-z_][A-Za-z0-9_$#@]*$/;
-
-export function quoteIdentifier(identifier, field = 'identifier') {
-  if (typeof identifier !== 'string' || !IDENTIFIER_PART.test(identifier)) {
-    throw new AppError(`Invalid ${field} "${identifier}".`, { code: 'INVALID_IDENTIFIER' });
-  }
-  return `[${identifier.replaceAll(']', ']]')}]`;
-}
-
-export function quoteMultipartIdentifier(identifier, field = 'identifier') {
-  if (typeof identifier !== 'string' || identifier.trim() === '') {
-    throw new AppError(`Invalid ${field}.`, { code: 'INVALID_IDENTIFIER' });
-  }
-  const parts = identifier.split('.');
-  if (parts.length < 1 || parts.length > 3 || parts.some((part) => !IDENTIFIER_PART.test(part))) {
-    throw new AppError(`Invalid ${field} "${identifier}".`, { code: 'INVALID_IDENTIFIER' });
-  }
-  return parts.map((part) => quoteIdentifier(part, field)).join('.');
-}
-
-const READ_ONLY_STATEMENT_START = new Set(['SELECT', 'VALUES', 'TABLE', 'EXPLAIN', 'SHOW', 'DESCRIBE', 'DESC']);
-const READ_ONLY_WITH_BANNED = new Set(['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'EXEC', 'EXECUTE']);
-const READ_ONLY_DEPTH_ZERO_BANNED = new Set(['INTO', 'OPENROWSET', 'OPENDATASOURCE', 'USE']);
-
-function stripSqlComments(text) {
-  let out = '';
-  let i = 0;
-  let quote = null;
-  while (i < text.length) {
-    const char = text[i];
-    const next = text[i + 1];
-    if (quote) {
-      out += char;
-      if (char === quote) {
-        if ((quote === "'" || quote === '"') && next === quote) {
-          out += next;
-          i += 2;
-          continue;
-        }
-        quote = null;
-      }
-      i += 1;
-      continue;
-    }
-    if (char === "'" || char === '"') {
-      quote = char;
-      out += char;
-      i += 1;
-      continue;
-    }
-    if (char === '-' && next === '-') {
-      while (i < text.length && text[i] !== '\n') i += 1;
-      continue;
-    }
-    if (char === '/' && next === '*') {
-      i += 2;
-      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i += 1;
-      i += 2;
-      continue;
-    }
-    out += char;
-    i += 1;
-  }
-  return out;
-}
-
-function splitSqlStatements(text) {
-  const statements = [];
-  let current = '';
-  let quote = null;
-  let depth = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    if (quote) {
-      current += char;
-      if (char === quote) {
-        if ((quote === "'" || quote === '"') && text[i + 1] === quote) {
-          current += text[i + 1];
-          i += 1;
-        } else {
-          quote = null;
-        }
-      }
-      continue;
-    }
-    if (char === "'" || char === '"') {
-      quote = char;
-      current += char;
-      continue;
-    }
-    if (char === '(') depth += 1;
-    if (char === ')') depth = Math.max(0, depth - 1);
-    if (char === ';' && depth === 0) {
-      statements.push(current);
-      current = '';
-      continue;
-    }
-    current += char;
-  }
-  statements.push(current);
-  return statements.map((statement) => statement.trim()).filter((statement) => statement.length > 0);
-}
-
-function sqlWords(statement) {
-  const words = [];
-  let current = '';
-  let quote = null;
-  let depth = 0;
-  const flush = () => {
-    if (current) {
-      words.push({ word: current.toUpperCase(), depthZero: true });
-      current = '';
-    }
-  };
-  for (let i = 0; i < statement.length; i += 1) {
-    const char = statement[i];
-    if (quote) {
-      if (char === quote) quote = null;
-      continue;
-    }
-    if (char === "'" || char === '"') {
-      quote = char;
-      continue;
-    }
-    if (char === '[') {
-      const end = statement.indexOf(']', i);
-      i = end === -1 ? statement.length : end;
-      continue;
-    }
-    if (char === '(') {
-      flush();
-      depth += 1;
-      continue;
-    }
-    if (char === ')') {
-      flush();
-      depth = Math.max(0, depth - 1);
-      continue;
-    }
-    if (depth === 0 && /[A-Za-z0-9_$#@]/.test(char) && (current || /[A-Za-z_]/.test(char))) {
-      current += char;
-      continue;
-    }
-    if (/[A-Za-z_]/.test(char)) {
-      flush();
-      let nested = '';
-      let j = i;
-      while (j < statement.length && /[A-Za-z0-9_$#@]/.test(statement[j])) {
-        nested += statement[j];
-        j += 1;
-      }
-      words.push({ word: nested.toUpperCase(), depthZero: false });
-      i = j - 1;
-      continue;
-    }
-    flush();
-  }
-  flush();
-  return words;
-}
-
-export function assertReadOnlyQuery(sqlText) {
-  const statements = splitSqlStatements(stripSqlComments(sqlText));
-  if (statements.length === 0) {
-    throw new AppError('SQL query must be a non-empty statement.', { code: 'INVALID_QUERY' });
-  }
-  if (statements.length > 1) {
-    throw new AppError('Read-only connections accept a single read statement per call.', {
-      code: 'READ_ONLY_VIOLATION',
-    });
-  }
-  const words = sqlWords(statements[0]);
-  const first = words.find((entry) => entry.depthZero)?.word;
-  if (!first) {
-    throw new AppError('SQL query must be a non-empty statement.', { code: 'INVALID_QUERY' });
-  }
-  if (first === 'WITH') {
-    const banned = words.find((entry) => READ_ONLY_WITH_BANNED.has(entry.word) || READ_ONLY_DEPTH_ZERO_BANNED.has(entry.word));
-    if (banned) {
-      throw new AppError(`Read-only connections reject statements containing "${banned.word}".`, {
-        code: 'READ_ONLY_VIOLATION',
-      });
-    }
-    return;
-  }
-  if (!READ_ONLY_STATEMENT_START.has(first)) {
-    throw new AppError(`Read-only connections reject "${first}" statements.`, {
-      code: 'READ_ONLY_VIOLATION',
-    });
-  }
-  const banned = words.find((entry) => READ_ONLY_DEPTH_ZERO_BANNED.has(entry.word));
-  if (banned) {
-    throw new AppError(`Read-only connections reject statements containing "${banned.word}".`, {
-      code: 'READ_ONLY_VIOLATION',
-    });
-  }
-}
-
-function normalizeConnectionForMssql(connection, database) {
-  return {
-    server: connection.host,
-    port: connection.port,
-    database: database || connection.database,
-    user: connection.username,
-    password: connection.password,
-    connectionTimeout: connection.connection_timeout_ms,
-    requestTimeout: connection.query_timeout_ms,
-    options: connection.options,
-    pool: {
-      max: 5,
-      min: 0,
-      idleTimeoutMillis: 30_000,
-    },
-  };
-}
-
-function columnType(column) {
-  const typeName = column.type?.declaration || column.type?.name || column.type;
-  return typeof typeName === 'string' ? typeName.toLowerCase() : String(typeName ?? 'unknown');
-}
-
-/**
- * Column descriptors for the first recordset.
- *
- * `mssql` describes columns in two shapes and this function is the one place that knows both.
- * Object mode gives a map keyed by column name. `arrayRowMode` gives an array with one entry per
- * recordset, each entry holding that recordset's descriptors in order, which is the shape
- * `DatabaseManager.query` receives.
- */
-function columnDescriptors(columns) {
-  if (Array.isArray(columns)) {
-    const recordsetColumns = Array.isArray(columns[0]) ? columns[0] : columns;
-    return recordsetColumns.map((metadata, index) => ({
-      name: metadata?.name || `column_${index + 1}`,
-      data_type: columnType(metadata ?? {}),
-      default_value: null,
-      is_nullable: metadata?.nullable ?? null,
-      is_primary_key: false,
-      is_foreign_key: false,
-    }));
-  }
-  return Object.entries(columns ?? {}).map(([name, metadata]) => ({
-    name,
-    data_type: columnType(metadata ?? {}),
-    default_value: null,
-    is_nullable: null,
-    is_primary_key: false,
-    is_foreign_key: false,
-  }));
-}
+export { assertReadOnlyQuery };
 
 // The cap must measure what the tool actually ships, not an inner slice. `toolResult` serialises the
 // whole result with JSON.stringify(value, null, 2), so the pretty-printed envelope is what counts.
@@ -258,44 +10,56 @@ function resultBytes(value) {
   return Buffer.byteLength(JSON.stringify(value, null, 2), 'utf8');
 }
 
-export function normalizeResult(result, rowLimit, totalRows = result.recordset.length, options = {}) {
-  const columns = columnDescriptors(result.columns);
-  const rows = result.recordset.slice(0, rowLimit).map((row) =>
+/**
+ * Caps a result to `rowLimit` rows and `maxBytes` of serialized output.
+ *
+ * Trailing rows are dropped because a multi-megabyte recordset over stdio stalls the client. The
+ * serialized size only grows as rows are added, so the largest fitting prefix is found by binary
+ * search rather than by reserialising once per dropped row.
+ */
+function clampResult({ columns, rows, totalRows, rowLimit, maxBytes }) {
+  const kept = rows.slice(0, rowLimit).map((row) =>
     Array.isArray(row) ? row.slice(0, columns.length) : columns.map(({ name }) => row[name]),
   );
-  const maxBytes = options.maxBytes;
   const capped = Number.isFinite(maxBytes) && maxBytes > 0;
-  // Trailing rows are dropped because a multi-megabyte recordset over stdio stalls the client. The
-  // serialized size only grows as rows are added, so the largest fitting prefix is found by binary
-  // search rather than by reserialising once per dropped row.
   if (capped) {
     const envelope = (count) => ({
       columns,
       row_count: count,
-      rows: rows.slice(0, count),
-      truncated: totalRows > count || count < rows.length,
+      rows: kept.slice(0, count),
+      truncated: totalRows > count || count < kept.length,
     });
     let low = 0;
-    let high = rows.length;
+    let high = kept.length;
     while (low < high) {
       const middle = Math.ceil((low + high) / 2);
       if (resultBytes(envelope(middle)) <= maxBytes) low = middle;
       else high = middle - 1;
     }
-    rows.length = low;
+    kept.length = low;
   }
   return {
     columns,
-    row_count: rows.length,
-    rows,
-    truncated: totalRows > rows.length,
+    row_count: kept.length,
+    rows: kept,
+    truncated: totalRows > kept.length,
   };
 }
 
+export function normalizeResult(result, rowLimit, totalRows = result.recordset.length, options = {}) {
+  return clampResult({
+    columns: columnDescriptors(result.columns),
+    rows: result.recordset,
+    totalRows,
+    rowLimit,
+    maxBytes: options.maxBytes,
+  });
+}
+
 export class DatabaseManager {
-  constructor(config, { driver = sql } = {}) {
+  constructor(config, { dialects = DIALECTS } = {}) {
     this.connections = new Map(config.connections.map((connection) => [connection.name, connection]));
-    this.driver = driver;
+    this.dialects = dialects;
     this.pools = new Map();
   }
 
@@ -308,25 +72,6 @@ export class DatabaseManager {
     }));
   }
 
-  async listConnectionDetails() {
-    const details = [];
-    for (const connection of this.connections.values()) {
-      const pool = await this.getPool(connection.name, 'master');
-      const result = await pool.request().query(`
-        SELECT name
-        FROM sys.databases
-        ORDER BY name;
-      `);
-      details.push({
-        name: connection.name,
-        db_type: connection.db_type,
-        database: connection.database,
-        available_databases: result.recordset.map((row) => row.name),
-      });
-    }
-    return details;
-  }
-
   getConnection(name) {
     const connection = this.connections.get(name);
     if (!connection) {
@@ -335,24 +80,100 @@ export class DatabaseManager {
     return connection;
   }
 
-  async getPool(connectionName, database) {
-    const connection = this.getConnection(connectionName);
-    const key = `${connectionName}:${database || connection.database}`;
-    let pool = this.pools.get(key);
-    if (pool?.connected) return pool;
+  defaultDatabase(name) {
+    return this.getConnection(name).database;
+  }
 
-    const poolConfig = normalizeConnectionForMssql(connection, database);
-    pool = new this.driver.ConnectionPool(poolConfig);
+  defaultSchema(name) {
+    const connection = this.getConnection(name);
+    return this.#dialectFor(connection).defaultSchema(connection);
+  }
+
+  #dialectFor(connection) {
+    const dialect = this.dialects[connection.db_type];
+    if (!dialect) {
+      throw new AppError(
+        `Connection "${connection.name}" has unsupported db_type "${connection.db_type}".`,
+        { code: 'CONFIG_INVALID' },
+      );
+    }
+    return dialect;
+  }
+
+  async #poolFor(connection, database) {
+    const dialect = this.#dialectFor(connection);
+    const key = `${connection.name}:${database || connection.database}`;
+    const existing = this.pools.get(key);
+    if (existing && dialect.poolUsable(existing.pool)) return existing.pool;
+
+    const pool = dialect.createPool(dialect.buildPoolConfig(connection, database));
     try {
-      await pool.connect();
+      await dialect.ready(pool);
     } catch (error) {
       throw new AppError(
-        `Could not connect to database connection "${connectionName}"${database ? ` using database "${database}"` : ''}: ${error.message}`,
+        `Could not connect to database connection "${connection.name}"${database ? ` using database "${database}"` : ''}: ${error.message}`,
         { code: 'DATABASE_CONNECTION_FAILED', cause: error },
       );
     }
-    this.pools.set(key, pool);
+    this.pools.set(key, { pool, dialect });
     return pool;
+  }
+
+  async listConnectionDetails() {
+    const details = [];
+    for (const connection of this.connections.values()) {
+      const { databases } = await this.listDatabases(connection.name);
+      details.push({
+        name: connection.name,
+        db_type: connection.db_type,
+        database: connection.database,
+        available_databases: databases,
+      });
+    }
+    return details;
+  }
+
+  async listDatabases(name) {
+    const connection = this.getConnection(name);
+    const dialect = this.#dialectFor(connection);
+    const pool = await this.#poolFor(connection, dialect.serverDatabase);
+    return { current: this.defaultDatabase(name), databases: await dialect.listDatabases(pool) };
+  }
+
+  async listObjects({ connection: connectionName, database, schema }) {
+    const connection = this.getConnection(connectionName);
+    const dialect = this.#dialectFor(connection);
+    const scope = dialect.resolveScope(connection, { database, schema });
+    const pool = await this.#poolFor(connection, scope.database);
+    const rows = await dialect.runPlan(pool, dialect.objectsPlan(scope));
+    return {
+      schema: scope.schema,
+      objects: rows.map((row) => ({
+        schema_name: row.schema_name,
+        object_name: row.object_name,
+        object_type: row.object_type,
+      })),
+    };
+  }
+
+  async describeCatalog({ connection: connectionName, database, schema, table, pattern, tables }) {
+    const connection = this.getConnection(connectionName);
+    const dialect = this.#dialectFor(connection);
+    const scope = dialect.resolveScope(connection, { database, schema });
+    const pool = await this.#poolFor(connection, scope.database);
+    const rows = await dialect.runPlan(pool, dialect.catalogPlan(scope, { table, pattern, tables }));
+    return { schema: scope.schema, rows: dialect.mapCatalogRows(rows) };
+  }
+
+  async previewTable({ connection: connectionName, database, schema, table, limit }) {
+    const connection = this.getConnection(connectionName);
+    const dialect = this.#dialectFor(connection);
+    const scope = dialect.resolveScope(connection, { database, schema });
+    const plan = dialect.previewPlan({ ...scope, table }, limit);
+    return {
+      schema: scope.schema,
+      result: await this.query(connectionName, plan.sql, { database: scope.database, rowLimit: limit }),
+    };
   }
 
   async query(connectionName, sqlText, { database, rowLimit } = {}) {
@@ -360,21 +181,23 @@ export class DatabaseManager {
       throw new AppError('SQL query must be a non-empty string.', { code: 'INVALID_QUERY' });
     }
     const connection = this.getConnection(connectionName);
-    if (connection.read_only) assertReadOnlyQuery(sqlText);
+    const dialect = this.#dialectFor(connection);
+    if (connection.read_only) dialect.assertReadOnly(sqlText);
     const limit = Number.isInteger(rowLimit) && rowLimit > 0
       ? Math.min(rowLimit, connection.max_row_limit)
       : connection.max_row_limit;
-    const pool = await this.getPool(connectionName, database);
-    const request = pool.request();
-    request.arrayRowMode = true;
+    const pool = await this.#poolFor(connection, database);
     let result;
     try {
-      result = await request.query(sqlText);
+      result = await dialect.runQuery(pool, sqlText, { timeout: connection.query_timeout_ms });
     } catch (error) {
       throw new AppError(`SQL query failed: ${error.message}`, { code: 'QUERY_FAILED', cause: error });
     }
-    const recordset = result.recordset ?? [];
-    return normalizeResult({ ...result, recordset }, limit, recordset.length, {
+    return clampResult({
+      columns: result.columns,
+      rows: result.rows,
+      totalRows: result.totalRows,
+      rowLimit: limit,
       maxBytes: connection.max_result_bytes,
     });
   }
@@ -382,6 +205,6 @@ export class DatabaseManager {
   async close() {
     const pools = [...this.pools.values()];
     this.pools.clear();
-    await Promise.allSettled(pools.map((pool) => pool.close()));
+    await Promise.allSettled(pools.map(({ pool, dialect }) => dialect.closePool(pool)));
   }
 }

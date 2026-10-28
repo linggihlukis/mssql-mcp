@@ -9,7 +9,7 @@
 // Needs a reachable SQL Server and config.json. Read-only: it runs two SELECTs.
 
 import { loadConfig } from '../src/config.js';
-import { DatabaseManager } from '../src/database.js';
+import { createMssqlDialect } from '../src/dialects/mssql.js';
 
 const PAIRS = 7;
 
@@ -72,8 +72,9 @@ function stats(runs) {
 
 const config = loadConfig();
 const connection = config.connections[0];
-const database = new DatabaseManager(config);
-const pool = await database.getPool(connection.name, connection.database);
+const dialect = createMssqlDialect();
+const pool = dialect.createPool(dialect.buildPoolConfig(connection, connection.database));
+await pool.connect();
 
 async function once(sql) {
   const started = process.hrtime.bigint();
@@ -108,5 +109,5 @@ process.stdout.write(`runs per side   ${PAIRS}, alternating\n`);
 process.stdout.write(`\nall current ms: ${a.all.map((ms) => ms.toFixed(0)).join(', ')}\n`);
 process.stdout.write(`all names   ms: ${b.all.map((ms) => ms.toFixed(0)).join(', ')}\n`);
 
-await database.close();
+await pool.close();
 process.exitCode = identical ? 0 : 1;

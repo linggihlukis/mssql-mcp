@@ -103,6 +103,80 @@ test('loadConfig — missing environment password — fails before database acce
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
+test('loadConfig — MySQL connection — accepts an empty password and the 3306 default port', () => {
+  const { directory, filePath } = temporaryConfig({
+    connections: [{
+      name: 'laragon',
+      db_type: 'mysql',
+      host: '127.0.0.1',
+      database: 'eosys',
+      username: 'eosys',
+      password: '',
+    }],
+  });
+  const config = loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } });
+  assert.equal(config.connections[0].db_type, 'mysql');
+  assert.equal(config.connections[0].password, '');
+  assert.equal(config.connections[0].port, 3306);
+  assert.deepEqual(config.connections[0].options, {});
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test('loadConfig — SQL Server connection — still refuses an empty password', () => {
+  const { directory, filePath } = temporaryConfig({
+    connections: [{
+      name: 'local',
+      db_type: 'mssql',
+      host: '127.0.0.1',
+      database: 'master',
+      username: 'reader',
+      password: '',
+    }],
+  });
+  assert.throws(
+    () => loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } }),
+    /needs a password/,
+  );
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test('loadConfig — option from another dialect — is rejected instead of silently dropped', () => {
+  const { directory, filePath } = temporaryConfig({
+    connections: [{
+      name: 'laragon',
+      db_type: 'mysql',
+      host: '127.0.0.1',
+      database: 'eosys',
+      username: 'eosys',
+      password: '',
+      options: { encrypt: true },
+    }],
+  });
+  assert.throws(
+    () => loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } }),
+    /option "encrypt", which belongs to db_type "mssql", not "mysql"/,
+  );
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test('loadConfig — unknown db_type — names the supported dialects', () => {
+  const { directory, filePath } = temporaryConfig({
+    connections: [{
+      name: 'local',
+      db_type: 'postgres',
+      host: '127.0.0.1',
+      database: 'app',
+      username: 'reader',
+      password: 'secret',
+    }],
+  });
+  assert.throws(
+    () => loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } }),
+    /use mssql or mysql/,
+  );
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
 test('loadConfig — duplicate connection names — rejects ambiguous configuration', () => {
   const { directory, filePath } = temporaryConfig({
     connections: [
