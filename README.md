@@ -1,23 +1,26 @@
 # mssql-mcp
 
-A local stdio MCP server for Microsoft SQL Server. It gives an MCP client read access to a SQL
-Server instance: browse connections, databases, tables, and columns, run bounded queries, and keep
-saved queries and tabs in a local workspace.
+A local stdio MCP server for Microsoft SQL Server and MySQL. It gives an MCP client read access to
+a database: browse connections, databases, tables, and columns, run bounded queries, and keep saved
+queries and tabs in a local workspace.
+
+The name predates the second dialect. Both are supported through the same twelve tools, and one
+`config.json` can hold connections of either kind side by side.
 
 It works with any MCP client that can launch a local process. No HTTP port, no bearer token, no
 GUI.
 
 ## Requirements
 
-- Node.js 18.19 or newer. The `mssql` driver requires it.
-- Network access to a SQL Server instance, and a SQL login for it.
+- Node.js 18.19 or newer. The `mssql` and `mysql2` drivers require it.
+- Network access to a SQL Server or MySQL instance, and a login for it.
 
 ## Why stdio
 
 The client launches the server as a child process and talks JSON-RPC over stdin and stdout:
 
 ```text
-MCP client -> stdio -> mssql-mcp -> TCP -> SQL Server
+MCP client -> stdio -> mssql-mcp -> TCP -> SQL Server or MySQL
 ```
 
 Nothing listens on a port. This avoids DB Atelier's local HTTP port, bearer token, startup
@@ -78,7 +81,8 @@ MSSQL_MCP_PASSWORD=your-real-password
 | Field | Default | Purpose |
 | --- | --- | --- |
 | `name` | required | Name the tools use to select this connection. |
-| `host`, `port` | required, `1433` | SQL Server address. |
+| `db_type` | `mssql` | `mssql` or `mysql`. Anything else is rejected at startup. |
+| `host`, `port` | required, `1433` for mssql, `3306` for mysql | Server address. |
 | `database` | required | Default database for this connection. |
 | `username_env`, `password_env` | required | Environment variable names that hold the credentials. |
 | `read_only` | `true` | Reject write statements before they reach the server. Must be a literal `true` or `false`; a connection opts into writes with `false`. |
@@ -86,9 +90,57 @@ MSSQL_MCP_PASSWORD=your-real-password
 | `max_result_bytes` | `262144` | Upper bound on the size of one tool result, in bytes. |
 | `query_timeout_ms` | `60000` | Per-request timeout. |
 | `connection_timeout_ms` | `10000` | Connect timeout. |
+| `options` | per dialect | Driver options, filtered by dialect. |
 
 Keep the password out of `config.json`. Name it through `password_env` so the server reads it from
 the environment or from `.env`, never from a file you might commit.
+
+### MySQL
+
+The same shape, with `db_type: "mysql"`:
+
+```json
+{
+  "name": "mysql",
+  "db_type": "mysql",
+  "host": "127.0.0.1",
+  "port": 3306,
+  "database": "eosys",
+  "username": "eosys",
+  "password": "",
+  "read_only": true,
+  "options": { "charset": "utf8mb4" }
+}
+```
+
+Three things differ from SQL Server:
+
+- **A schema is a database.** MySQL has no second namespace level, so `schema` and `database` name
+  the same thing on every tool. Naming two different values in one call is an `INVALID_INPUT` error
+  rather than a silent pick.
+- **An empty password is accepted.** Laragon ships accounts without one, so `password: ""` and
+  `MYSQL_PASSWORD=` both load. A password variable that is not set at all is still
+  `CONFIG_SECRET_MISSING`, so a typo in the variable name cannot silently become "no password".
+- **`options` belong to a dialect.** `charset`, `timezone`, and `ssl` are MySQL's. `encrypt`,
+  `trustServerCertificate`, and `enableArithAbort` are SQL Server's. A key from the other dialect
+  is rejected at startup instead of being passed to a driver that would ignore it.
+
+`multipleStatements` is always `false` and is not configurable: a second statement is what the
+read-only guard exists to stop, so it is also refused by the driver.
+
+`query_timeout_ms` maps to mysql2's `timeout`, which is an inactivity timeout rather than SQL
+Server's per-request deadline. A query that keeps the connection busy past the limit is still
+bounded, but it is measured differently on the two dialects.
+
+### Dialect support
+
+| | SQL Server (`mssql`) | MySQL (`mysql`) |
+| --- | --- | --- |
+| Catalog source | `sys.objects`, `sys.columns` | `information_schema` |
+| Identifier quoting | `[name]` | `` `name` `` |
+| Preview | `SELECT TOP (n) *` | `SELECT * ... LIMIT n` |
+| Read-only enforcement | guard, plus the login's permissions | guard, plus `multipleStatements: false` |
+| Big integers | driver's `bigint` mapping | exact strings above 2^53 (`supportBigNumbers`) |
 
 ### Environment variables
 
@@ -239,7 +291,7 @@ The server provides 12 tools:
 GUI window, so the tool returns the data instead.
 
 The three `manage_*` tools write local workspace state under `MSSQL_MCP_DATA_DIR`. They never write
-to SQL Server, except that `manage_query_tab` with `execute: true` runs the tab's SQL through the
+to the database, except that `manage_query_tab` with `execute: true` runs the tab's SQL through the
 same guard as `execute_sql`.
 
 ### Read-only connections
@@ -252,6 +304,17 @@ silently picking a mode.
 When a connection is read-only, the server rejects a statement before it reaches the server unless
 it is a single read statement. Writes, DDL, `EXEC`, and multi-statement payloads fail with a
 read-only error, and the rejection happens before a connection is opened.
+
+The guard is a small lexer, not a regex, and each dialect supplies its own lexical rules. That
+matters where a read can still write or lock. On MySQL the server refuses `INTO OUTFILE` and
+`INTO DUMPFILE` (a file write), `INTO @var`, `FOR UPDATE` and `LOCK IN SHARE MODE` (row locks), a
+write hidden inside an executable comment such as `/*!50000 ... */` (MySQL runs those), and
+`EXPLAIN ANALYZE UPDATE` (which executes the update it describes). On SQL Server it refuses `INTO`
+and `OPENROWSET`. Both refuse a statement whose only comment-free reading is a write, and both
+refuse more than one statement per call.
+
+A guard is a safety net, not the only one. The stronger configuration is a login that cannot write
+at all, which is what the SQL Server connection in this repository uses.
 
 `execute_sql` also clamps `row_limit` to the connection's `max_row_limit`. A query that returns more
 rows than the limit reports `truncated: true`.
@@ -311,6 +374,15 @@ node .agents/skills/verify-mssql-mcp/scripts/cleanup.mjs --run <run dir>
 Doctor proves the login is read-only before anything is driven, and the drive records every JSON-RPC
 frame, a read result checked against a second independent session, and a write attempt refused by
 both the guard and the server. See `.agents/skills/verify-mssql-mcp/SKILL.md`.
+
+MySQL has its own pair, because the safety argument is different: a local MySQL login usually holds
+write permission, so the guard is what refuses a write and the doctor proves the guard statement by
+statement instead of proving the login is powerless.
+
+```powershell
+node .agents/skills/verify-mssql-mcp/scripts/mysql-doctor.mjs
+node .agents/skills/verify-mssql-mcp/scripts/mysql-drive.mjs --run <run dir from doctor>
+```
 
 The skill targets one specific production instance. Change the expected login and database in its
 `scripts/lib.mjs` before pointing it at a different server. The skill also assumes a read-only
