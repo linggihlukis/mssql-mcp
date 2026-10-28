@@ -248,14 +248,9 @@ function mapCatalogRows(rows) {
 }
 
 // A MySQL schema is a database: there is no second namespace level, so both arguments name the same
-// thing and an explicit disagreement is a caller mistake worth reporting.
+// thing. The catalog lives in the schema, so a schema that does not exist has no objects to list,
+// and the caller hears that rather than a connection failure.
 function resolveScope(connection, { database, schema } = {}) {
-  if (database && schema && database !== schema) {
-    throw new AppError(
-      `Connection "${connection.name}" is MySQL, where a schema is a database, so "${database}" and "${schema}" cannot be combined.`,
-      { code: 'INVALID_INPUT' },
-    );
-  }
   const name = database || schema || connection.database;
   return { database: name, schema: name };
 }
@@ -263,7 +258,6 @@ function resolveScope(connection, { database, schema } = {}) {
 function defaultSchema(connection) {
   return connection.database;
 }
-
 export function createMysqlDialect({ driver = mysql } = {}) {
   return {
     name: 'mysql',

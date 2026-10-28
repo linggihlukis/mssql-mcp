@@ -116,8 +116,8 @@ The same shape, with `db_type: "mysql"`:
 Three things differ from SQL Server:
 
 - **A schema is a database.** MySQL has no second namespace level, so `schema` and `database` name
-  the same thing on every tool. Naming two different values in one call is an `INVALID_INPUT` error
-  rather than a silent pick.
+  the same thing on every tool. A call that names both uses the database, and a call that names
+  only a schema reads that schema as the database.
 - **An empty password is accepted.** Laragon ships accounts without one, so `password: ""` and
   `MYSQL_PASSWORD=` both load. A password variable that is not set at all is still
   `CONFIG_SECRET_MISSING`, so a typo in the variable name cannot silently become "no password".

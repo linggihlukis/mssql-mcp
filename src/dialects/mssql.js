@@ -233,6 +233,9 @@ function mapCatalogRows(rows) {
   }));
 }
 
+// SQL Server has two namespace levels, so `database` and `schema` are different things and both
+// are used. A database on its own still needs a schema to read from, and the default is the one
+// SQL Server itself uses.
 function resolveScope(connection, { database, schema } = {}) {
   return {
     database: database || connection.database,

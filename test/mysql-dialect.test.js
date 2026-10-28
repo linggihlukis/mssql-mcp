@@ -164,10 +164,13 @@ test('mysql scope — schema is the database — one name fills both levels', ()
   const connection = { name: 'laragon', database: 'eosys' };
   assert.deepEqual(dialect.resolveScope(connection, {}), { database: 'eosys', schema: 'eosys' });
   assert.deepEqual(dialect.resolveScope(connection, { schema: 'other' }), { database: 'other', schema: 'other' });
-  assert.deepEqual(dialect.defaultSchema(connection), 'eosys');
-  assert.throws(
-    () => dialect.resolveScope(connection, { database: 'eosys', schema: 'dbo' }),
-    /a schema is a database/,
+  assert.deepEqual(dialect.resolveScope(connection, { database: 'other' }), { database: 'other', schema: 'other' });
+  assert.equal(dialect.defaultSchema(connection), 'eosys');
+  // A MySQL schema is a database, so the two arguments name the same thing and the first one wins
+  // rather than the call failing.
+  assert.deepEqual(
+    dialect.resolveScope(connection, { database: 'eosys', schema: 'dbo' }),
+    { database: 'eosys', schema: 'eosys' },
   );
 });
 
