@@ -1,9 +1,9 @@
-# mssql-mcp verification map
+# sql-mcp verification map
 
-This directory is the maintained source for verifying the user-facing behavior of `mssql-mcp`.
+This directory is the maintained source for verifying the user-facing behavior of `sql-mcp`.
 Read this index before driving the server, then use the matching feature file as the recipe.
 
-`mssql-mcp` is a stdio MCP server. Its user surface is an MCP client session, not a browser. There
+`sql-mcp` is a stdio MCP server. Its user surface is an MCP client session, not a browser. There
 are 12 tools; the map groups them by what a user is trying to accomplish.
 
 ## Baseline preconditions
@@ -12,16 +12,16 @@ are 12 tools; the map groups them by what a user is trying to accomplish.
   to the production host. If the tunnel is down, every drive fails with `ETIMEOUT`; that is an
   environment failure, not a product failure.
 - `config.json` may name several connections. The verified one is `prod`: host `127.0.0.1`, database
-  `Uranus`, `read_only: true`, with credentials supplied through `MSSQL_MCP_SQLSERVER_PROD_USERNAME` /
-  `MSSQL_MCP_SQLSERVER_PROD_PASSWORD`. The helpers drive `prod` unless
-  `MSSQL_MCP_VERIFY_CONNECTION` names another connection, and the doctor still requires the login in
-  `MSSQL_MCP_VERIFY_LOGIN` on the host in `MSSQL_MCP_VERIFY_SERVER`.
+  `Uranus`, `read_only: true`, with credentials supplied through `SQL_MCP_SQLSERVER_PROD_USERNAME` /
+  `SQL_MCP_SQLSERVER_PROD_PASSWORD`. The helpers drive `prod` unless
+  `SQL_MCP_VERIFY_CONNECTION` names another connection, and the doctor still requires the login in
+  `SQL_MCP_VERIFY_LOGIN` on the host in `SQL_MCP_VERIFY_SERVER`.
 - A development connection that logs in with a higher-privilege account is **out of scope**. The
   doctor fails closed on it (`live.login` / `sysadmin-denied`), and no drive may target it.
 - `.env` next to `config.json` holds the prod credentials and the expected identity
-  (`MSSQL_MCP_VERIFY_LOGIN`, `MSSQL_MCP_VERIFY_SERVER`). They stay out of the repository. Never edit
+  (`SQL_MCP_VERIFY_LOGIN`, `SQL_MCP_VERIFY_SERVER`). They stay out of the repository. Never edit
   either file to make a test pass.
-- `node .agents/skills/verify-mssql-mcp/scripts/doctor.mjs` reports `readOnly: true`. Do not drive
+- `node .agents/skills/verify-sql-mcp/scripts/doctor.mjs` reports `readOnly: true`. Do not drive
   without it. Pass the run directory it prints to `drive.mjs` and `cleanup.mjs` as `--run <dir>`;
   do not rely on "newest run" discovery, which cannot span a sandboxed and an escalated process.
 - Drives are serialized. One production login, one drive at a time.
@@ -36,7 +36,7 @@ are 12 tools; the map groups them by what a user is trying to accomplish.
 - Every query stays bounded: `TOP`, explicit columns, no `SELECT *`, request timeout.
 - Keep to `Uranus`. Opening another database is a scope violation even for a read.
 - Never use `BEGIN TRAN ... ROLLBACK`; never DROP, DELETE, TRUNCATE, or create anything on the
-  server. Local workspace deletes are allowed only inside the run's scratch `MSSQL_MCP_DATA_DIR`.
+  server. Local workspace deletes are allowed only inside the run's scratch `SQL_MCP_DATA_DIR`.
 
 ## Proof and skip reporting
 

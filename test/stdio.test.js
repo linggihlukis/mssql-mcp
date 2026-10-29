@@ -68,7 +68,7 @@ function send(child, message) {
 }
 
 test('stdio server — real subprocess — returns MCP initialization and all tools without stdout noise', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mssql-mcp-stdio-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sql-mcp-stdio-'));
   const configPath = path.join(directory, 'config.json');
   fs.writeFileSync(configPath, JSON.stringify({
     connections: [{
@@ -85,8 +85,8 @@ test('stdio server — real subprocess — returns MCP initialization and all to
     cwd: root,
     env: {
       ...process.env,
-      MSSQL_MCP_CONFIG: configPath,
-      MSSQL_MCP_DATA_DIR: path.join(directory, 'data'),
+      SQL_MCP_CONFIG: configPath,
+      SQL_MCP_DATA_DIR: path.join(directory, 'data'),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -103,7 +103,7 @@ test('stdio server — real subprocess — returns MCP initialization and all to
       },
     });
     const initialized = await waitForResponse(child, 1);
-    assert.equal(initialized.result.serverInfo.name, 'mssql-mcp');
+    assert.equal(initialized.result.serverInfo.name, 'sql-mcp');
 
     send(child, { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
     const tools = await waitForResponse(child, 2);

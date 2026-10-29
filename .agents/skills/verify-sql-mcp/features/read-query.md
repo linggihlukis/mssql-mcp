@@ -16,8 +16,8 @@ agent inspects production data.
 ## How to get to it (user POV)
 
 - Call the `execute_sql` tool from any MCP client: `{ connection, database, row_limit, sql }`.
-- In Zed, that is the `mssql-mcp` context server's `execute_sql` tool.
-- In this harness, it is the `mssql` MCP server's `execute_sql` tool.
+- In Zed, that is the `sql-mcp` context server's `execute_sql` tool.
+- In this harness, it is the `sql-mcp` MCP server's `execute_sql` tool.
 
 ## Driving it with the MCP client
 
@@ -30,7 +30,7 @@ Preconditions:
 
 - **Read the table.** Call `execute_sql` with
   `SELECT TOP (5) Id, Name, IsEnable FROM dbo._DIM_BranchGroup ORDER BY Id`. Run
-  `node .agents/skills/verify-mssql-mcp/scripts/drive.mjs --run <dir>`. The response frame has
+  `node .agents/skills/verify-sql-mcp/scripts/drive.mjs --run <dir>`. The response frame has
   `isError` absent or `false`, and one text content block containing JSON.
 - **Check the shape.** The JSON must carry `columns`, `row_count`, `rows`, `truncated`. `columns`
   must be three entries in order, named `Id`, `Name`, `IsEnable`, with data types `int`, `varchar`,

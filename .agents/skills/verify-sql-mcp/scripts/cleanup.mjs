@@ -10,8 +10,8 @@
 // script exits non-zero rather than claiming a clean teardown it cannot prove.
 //
 // Usage:
-//   node .agents/skills/verify-mssql-mcp/scripts/cleanup.mjs            # newest run
-//   node .agents/skills/verify-mssql-mcp/scripts/cleanup.mjs --run <dir>
+//   node .agents/skills/verify-sql-mcp/scripts/cleanup.mjs            # newest run
+//   node .agents/skills/verify-sql-mcp/scripts/cleanup.mjs --run <dir>
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

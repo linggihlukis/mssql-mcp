@@ -1,7 +1,7 @@
 # Persisted query workspace
 
 A user saves queries, organises them into folders, and keeps editor tabs open across restarts. This
-is local state stored in a JSON file under `MSSQL_MCP_DATA_DIR` — the workspace itself never touches
+is local state stored in a JSON file under `SQL_MCP_DATA_DIR` — the workspace itself never touches
 SQL Server, though `manage_query_tab` with `execute: true` runs the tab's SQL through the same
 read-only guard as `execute_sql`. It is the one part of the surface that legitimately writes, and it
 writes only to the local filesystem.
@@ -18,7 +18,7 @@ writes only to the local filesystem.
 ## How to get to it (user POV)
 
 - Call `manage_saved_queries`, `manage_query_folders`, or `manage_query_tab` from any MCP client.
-- The workspace is per `MSSQL_MCP_DATA_DIR`; the harness uses `data/`, while a verification run uses
+- The workspace is per `SQL_MCP_DATA_DIR`; the harness uses `data/`, while a verification run uses
   its own scratch directory.
 
 ## Driving it with the MCP client
@@ -26,7 +26,7 @@ writes only to the local filesystem.
 Preconditions:
 
 - `doctor.mjs` reported `readOnly: true`.
-- `MSSQL_MCP_DATA_DIR` points at the run's scratch directory, **not** the user's real `data/`. A
+- `SQL_MCP_DATA_DIR` points at the run's scratch directory, **not** the user's real `data/`. A
   drive that writes to the real workspace destroys saved queries.
 
 - **Create a folder.** Call `manage_query_folders` with
@@ -42,7 +42,7 @@ Preconditions:
 - **Create a tab and execute.** Call `manage_query_tab` with
   `{ action: "create", connection, database, title: "verify-tab", sql: "SELECT TOP (1) DB_NAME() AS db", execute: true }`.
   The tab is created **and** the read runs against SQL Server.
-- **Prove persistence.** Stop the MCP process, start a new one with the same `MSSQL_MCP_DATA_DIR`,
+- **Prove persistence.** Stop the MCP process, start a new one with the same `SQL_MCP_DATA_DIR`,
   and call `{ action: "get", queryId }`. The query is still there.
 - **Proof.** Keep the frames and the scratch `workspace.json` before cleanup removes it.
 

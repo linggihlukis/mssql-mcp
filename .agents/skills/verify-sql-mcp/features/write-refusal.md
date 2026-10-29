@@ -31,7 +31,7 @@ Preconditions:
 
 - **Guard rejects INSERT.** Call `execute_sql` with
   `INSERT INTO dbo._DIM_BranchGroup (Name, IsEnable) SELECT TOP (0) 'verify-probe', 1`. Run
-  `node .agents/skills/verify-mssql-mcp/scripts/drive.mjs --run <dir>`. The response has
+  `node .agents/skills/verify-sql-mcp/scripts/drive.mjs --run <dir>`. The response has
   `isError: true` and the text contains `Read-only connections reject "INSERT" statements.` (the
   full text is prefixed by `Tool execute_sql failed: `).
 - **Guard rejects UPDATE.** Call `execute_sql` with

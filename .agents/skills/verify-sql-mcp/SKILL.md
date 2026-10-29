@@ -1,11 +1,11 @@
 ---
-name: verify-mssql-mcp
-description: Verify the mssql-mcp stdio MCP server by driving it with a real MCP client against the configured production SQL Server connection as its read-only login. Use when proving MCP tool behavior, checking a change did not break the read path, or confirming write attempts are refused. Never drives the app through a higher-privilege login.
+name: verify-sql-mcp
+description: Verify the sql-mcp stdio MCP server by driving it with a real MCP client against the configured production SQL Server connection as its read-only login. Use when proving MCP tool behavior, checking a change did not break the read path, or confirming write attempts are refused. Never drives the app through a higher-privilege login.
 ---
 
-# Verify mssql-mcp
+# Verify sql-mcp
 
-`mssql-mcp` is a stdio MCP server, not a web app. There is no browser, no port, and no GUI. A user
+`sql-mcp` is a stdio MCP server, not a web app. There is no browser, no port, and no GUI. A user
 surface here is an MCP client session: a process that speaks newline-delimited JSON-RPC over stdin
 and stdout, which the server turns into SQL against SQL Server.
 
@@ -14,11 +14,11 @@ result against a second, independent view of the same database.
 
 ## Safety comes first
 
-The skill drives exactly one configured connection, selected by `MSSQL_MCP_VERIFY_CONNECTION`
+The skill drives exactly one configured connection, selected by `SQL_MCP_VERIFY_CONNECTION`
 (default `prod`). For this project that connection is production, database `Uranus`. `config.json`
 may hold other connections — a development connection, for example, that logs in with a
 higher-privilege account — and the skill never drives them. The expected host and read-only login
-come from `MSSQL_MCP_VERIFY_SERVER` and `MSSQL_MCP_VERIFY_LOGIN` in `.env`, not from this file.
+come from `SQL_MCP_VERIFY_SERVER` and `SQL_MCP_VERIFY_LOGIN` in `.env`, not from this file.
 There is no disposable database on the production server (`dbcreator = 0`,
 `CREATE ANY DATABASE = 0`), so a test database cannot be created, and none is planned for.
 
@@ -28,7 +28,7 @@ Rules that the helpers enforce rather than merely describe:
   `DELETE`, `ALTER`, `CREATE TABLE`, `CONTROL` all `= 0` in `Uranus`, on `dbo._DIM_BranchGroup`,
   and in every other database it can see. `doctor.mjs` re-proves this on every run and fails closed.
 - **Never drive through a higher-privilege login.** `lib.mjs` refuses to open a connection as
-  anything other than the login in `MSSQL_MCP_VERIFY_LOGIN`, and `doctor.mjs` refuses to proceed if
+  anything other than the login in `SQL_MCP_VERIFY_LOGIN`, and `doctor.mjs` refuses to proceed if
   the selected connection names another login or database. This is why a development connection
   that logs in with a higher-privilege account is not a valid target even when production is
   unreachable.
@@ -39,7 +39,7 @@ Rules that the helpers enforce rather than merely describe:
   blocks real users. Safety comes from permissions the login does not have.
 - **Never DROP, DELETE, TRUNCATE, or create anything on the server** — not in the drive, not in
   cleanup. Local workspace deletes are allowed, and only inside the run's scratch
-  `MSSQL_MCP_DATA_DIR`.
+  `SQL_MCP_DATA_DIR`.
 - **Every query is bounded:** `TOP`, explicit column names, no `SELECT *`, and a request timeout.
 - **One instance, drives serialized.** One production login means no parallel drives.
 
@@ -56,8 +56,8 @@ node src/index.js
 The helpers launch it correctly, so you rarely type that. Two environment variables matter, and
 neither is a secret:
 
-- `MSSQL_MCP_CONFIG` — absolute path to `config.json` (defaults to `./config.json`).
-- `MSSQL_MCP_DATA_DIR` — where saved queries and tabs persist. The helpers point this at the run's
+- `SQL_MCP_CONFIG` — absolute path to `config.json` (defaults to `./config.json`).
+- `SQL_MCP_DATA_DIR` — where saved queries and tabs persist. The helpers point this at the run's
   scratch directory so a drive never touches your real workspace.
 
 Credentials are read by the child from `.env` next to `config.json` (`username_env` / `password_env`).
@@ -76,7 +76,7 @@ its stdin, so a regression cannot strand one.
 Prove read-only before any drive. This is the check that makes a negative test safe.
 
 ```powershell
-node .agents/skills/verify-mssql-mcp/scripts/doctor.mjs
+node .agents/skills/verify-sql-mcp/scripts/doctor.mjs
 ```
 
 Exit `0` and `readOnly: true` mean the instance is worth driving. Exit `2` means **blocked**: report
@@ -86,9 +86,9 @@ It asserts, in one run:
 
 | Check | Requirement |
 | --- | --- |
-| `live.login`, `live.original-login` | exactly `MSSQL_MCP_VERIFY_LOGIN` |
+| `live.login`, `live.original-login` | exactly `SQL_MCP_VERIFY_LOGIN` |
 | `live.database` | exactly `Uranus` |
-| `live.server` | `MSSQL_MCP_VERIFY_SERVER` |
+| `live.server` | `SQL_MCP_VERIFY_SERVER` |
 | `perms.select-granted` | `HAS_PERMS_BY_NAME(...,'DATABASE','SELECT') = 1` |
 | `perms.can_insert-denied` … `perms.can_control-denied` | `INSERT`, `UPDATE`, `DELETE`, `ALTER`, `CREATE TABLE`, `CONTROL` all `= 0` |
 | `perms.can_create_any_database-denied`, `perms.can_control_server-denied` | `= 0` |
@@ -104,7 +104,7 @@ writes `readOnly: false`; `drive.mjs` refuses to run without a `readOnly: true` 
 ## Drive
 
 ```powershell
-node .agents/skills/verify-mssql-mcp/scripts/drive.mjs --run <run dir printed by doctor>
+node .agents/skills/verify-sql-mcp/scripts/drive.mjs --run <run dir printed by doctor>
 ```
 
 `drive.mjs` runs one serialized drive and writes `drive.json` next to the proof. What it proves:
@@ -165,13 +165,13 @@ of the two commands above, and they share the session machinery, reporting and e
 `lib.mjs`.
 
 ```powershell
-node .agents/skills/verify-mssql-mcp/scripts/mysql-doctor.mjs
-node .agents/skills/verify-mssql-mcp/scripts/mysql-drive.mjs --run <run dir printed by doctor>
+node .agents/skills/verify-sql-mcp/scripts/mysql-doctor.mjs
+node .agents/skills/verify-sql-mcp/scripts/mysql-drive.mjs --run <run dir printed by doctor>
 ```
 
 They drive the connection named `mysql` in `config.json` — the local Laragon server on
 `127.0.0.1:3306`, schema `eosys`, table `departments`. Override the connection with
-`MSSQL_MCP_VERIFY_MYSQL_CONNECTION`. The read target is fixed in `mysql-lib.mjs` rather than
+`SQL_MCP_VERIFY_MYSQL_CONNECTION`. The read target is fixed in `mysql-lib.mjs` rather than
 discovered, so a run cannot silently drift to another table.
 
 **The MySQL login is not read-only, and this is the one place the two dialects differ in kind.**
@@ -213,9 +213,9 @@ recorded as `INFO`, not asserted. A non-zero count there would be a fabricated e
 ## Evidence
 
 Evidence goes outside the repository, because JSON-RPC frames contain production rows. The root is
-the first writable candidate of `%LOCALAPPDATA%\mssql-mcp-verify\` and
-`%TEMP%\mssql-mcp-verify\`; the chosen path is printed by every helper. Override with
-`MSSQL_MCP_VERIFY_EVIDENCE` to pin one directory. Never write evidence under the repo, and never
+the first writable candidate of `%LOCALAPPDATA%\sql-mcp-verify\` and
+`%TEMP%\sql-mcp-verify\`; the chosen path is printed by every helper. Override with
+`SQL_MCP_VERIFY_EVIDENCE` to pin one directory. Never write evidence under the repo, and never
 commit it.
 
 **Always pass `--run <dir>` explicitly**, using the path doctor printed. Do not rely on
@@ -247,7 +247,7 @@ The password is redacted in every artifact (`makeRedactor` strips the live secre
 ## Cleanup
 
 ```powershell
-node .agents/skills/verify-mssql-mcp/scripts/cleanup.mjs --run <run dir>
+node .agents/skills/verify-sql-mcp/scripts/cleanup.mjs --run <run dir>
 ```
 
 Cleanup stops only the MCP processes this run started — pids recorded in its own frames, checked
@@ -288,19 +288,19 @@ the MCP SDK from the repo's `node_modules`, so no install step is needed.
 
 | Command | Purpose |
 | --- | --- |
-| `node .agents/skills/verify-mssql-mcp/scripts/doctor.mjs` | Prove read-only; writes `proof.json`; exit `2` = blocked |
-| `node .agents/skills/verify-mssql-mcp/scripts/drive.mjs --run <dir>` | One serialized drive; writes `drive.json` |
-| `node .agents/skills/verify-mssql-mcp/scripts/cleanup.mjs --run <dir>` | Stop this run's processes, remove scratch, keep evidence |
-| `node .agents/skills/verify-mssql-mcp/scripts/mysql-doctor.mjs` | Prove the MySQL guard and capture the baseline; writes `mysql-doctor.json`; exit `2` = blocked |
-| `node .agents/skills/verify-mssql-mcp/scripts/mysql-drive.mjs --run <dir>` | One serialized MySQL drive; writes `mysql-drive.json` |
+| `node .agents/skills/verify-sql-mcp/scripts/doctor.mjs` | Prove read-only; writes `proof.json`; exit `2` = blocked |
+| `node .agents/skills/verify-sql-mcp/scripts/drive.mjs --run <dir>` | One serialized drive; writes `drive.json` |
+| `node .agents/skills/verify-sql-mcp/scripts/cleanup.mjs --run <dir>` | Stop this run's processes, remove scratch, keep evidence |
+| `node .agents/skills/verify-sql-mcp/scripts/mysql-doctor.mjs` | Prove the MySQL guard and capture the baseline; writes `mysql-doctor.json`; exit `2` = blocked |
+| `node .agents/skills/verify-sql-mcp/scripts/mysql-drive.mjs --run <dir>` | One serialized MySQL drive; writes `mysql-drive.json` |
 
-Set `MSSQL_MCP_VERIFY_LOGIN` and `MSSQL_MCP_VERIFY_SERVER` in `.env` (or the environment) to the
+Set `SQL_MCP_VERIFY_LOGIN` and `SQL_MCP_VERIFY_SERVER` in `.env` (or the environment) to the
 read-only login and production host the doctor must see. They are not committed; with either unset,
 the helpers refuse to connect and the doctor exits `2`.
 
-Set `MSSQL_MCP_VERIFY_CONNECTION` to drive a different configured connection. The doctor still
-requires that connection to resolve to the login in `MSSQL_MCP_VERIFY_LOGIN` on the host in
-`MSSQL_MCP_VERIFY_SERVER`; a higher-privilege login fails closed.
+Set `SQL_MCP_VERIFY_CONNECTION` to drive a different configured connection. The doctor still
+requires that connection to resolve to the login in `SQL_MCP_VERIFY_LOGIN` on the host in
+`SQL_MCP_VERIFY_SERVER`; a higher-privilege login fails closed.
 
 `scripts/lib.mjs` holds the shared contract: expected login/database, the bounded read statement,
 the write probes, the evidence roots, the redactor, and the two session implementations
@@ -310,8 +310,8 @@ the write probes, the evidence roots, the redactor, and the two session implemen
 connection that accepts Laragon's empty password, and the fingerprint and catalog queries. It
 re-exports the session and reporting helpers from `lib.mjs` so a MySQL helper imports one file.
 
-Set `MSSQL_MCP_VERIFY_MYSQL_CONNECTION` to drive a different configured MySQL connection, and
-`MSSQL_MCP_VERIFY_MYSQL_LOGIN` to make the MySQL helpers refuse any other login. The second is
+Set `SQL_MCP_VERIFY_MYSQL_CONNECTION` to drive a different configured MySQL connection, and
+`SQL_MCP_VERIFY_MYSQL_LOGIN` to make the MySQL helpers refuse any other login. The second is
 optional because the local server has one account; leaving it unset means the configured login is
 used and reported, not checked.
 

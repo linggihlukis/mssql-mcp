@@ -14,7 +14,7 @@
 //     blocking and why every write probe is expected to be refused before the driver.
 //
 // Usage:
-//   node .agents/skills/verify-mssql-mcp/scripts/mysql-doctor.mjs [--run <dir>]
+//   node .agents/skills/verify-sql-mcp/scripts/mysql-doctor.mjs [--run <dir>]
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
