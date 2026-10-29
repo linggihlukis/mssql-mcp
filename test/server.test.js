@@ -9,7 +9,7 @@ import { createServer } from '../src/index.js';
 import { WorkspaceStore } from '../src/workspace-store.js';
 
 function makeContext() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mssql-mcp-server-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sql-mcp-server-'));
   const fakeDatabase = {
     listConnectionDetails: async () => [{
       name: 'local',

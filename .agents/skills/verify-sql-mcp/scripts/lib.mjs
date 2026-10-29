@@ -1,7 +1,7 @@
-// Shared helpers for the verify-mssql-mcp skill.
+// Shared helpers for the verify-sql-mcp skill.
 //
 // Safety contract, enforced here rather than in prose:
-//   * The only SQL login used is the one named by MSSQL_MCP_VERIFY_LOGIN. resolveConnection()
+//   * The only SQL login used is the one named by SQL_MCP_VERIFY_LOGIN. resolveConnection()
 //     refuses any other login.
 //   * Every statement issued by these helpers is bounded (TOP), names its columns, and carries a
 //     request timeout. Nothing here issues DDL or a destructive statement.
@@ -20,19 +20,19 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 export const REPO = path.resolve(here, '..', '..', '..', '..');
 export const ENTRY = path.join(REPO, 'src', 'index.js');
-export const CONFIG_PATH = path.resolve(process.env.MSSQL_MCP_CONFIG || path.join(REPO, 'config.json'));
+export const CONFIG_PATH = path.resolve(process.env.SQL_MCP_CONFIG || path.join(REPO, 'config.json'));
 
 // Expected identity comes from the environment or the dotenv file next to config.json, so the
 // read-only login and host are never committed. Both are required: with either unset, the helpers
 // refuse to connect and doctor.mjs fails closed.
 const dotenv = readDotEnv(path.join(path.dirname(CONFIG_PATH), '.env'));
-export const EXPECTED_LOGIN = process.env.MSSQL_MCP_VERIFY_LOGIN ?? dotenv.MSSQL_MCP_VERIFY_LOGIN;
-export const EXPECTED_SERVER = process.env.MSSQL_MCP_VERIFY_SERVER ?? dotenv.MSSQL_MCP_VERIFY_SERVER;
+export const EXPECTED_LOGIN = process.env.SQL_MCP_VERIFY_LOGIN ?? dotenv.SQL_MCP_VERIFY_LOGIN;
+export const EXPECTED_SERVER = process.env.SQL_MCP_VERIFY_SERVER ?? dotenv.SQL_MCP_VERIFY_SERVER;
 export const EXPECTED_DATABASE = 'Uranus';
 // The connection this skill drives. config.json may hold other connections (for example a
 // development connection that logs in with a higher-privilege account); they are never driven, and
 // the doctor fails closed on any login other than EXPECTED_LOGIN.
-export const CONNECTION_NAME = process.env.MSSQL_MCP_VERIFY_CONNECTION || 'prod';
+export const CONNECTION_NAME = process.env.SQL_MCP_VERIFY_CONNECTION || 'prod';
 
 // The read journey. Bounded, explicit columns, no SELECT *, one statement, one database.
 export const READ_SCHEMA = 'dbo';
@@ -69,15 +69,15 @@ export const WRITE_PROBES = [
  * differs per sandbox, while an escalated run also reaches %LOCALAPPDATA%. So creation picks the
  * first candidate that accepts a real write, and discovery searches every candidate. A run that
  * starts in one mode and continues in another still finds its own proof.
- * Override with MSSQL_MCP_VERIFY_EVIDENCE to pin a single directory.
+ * Override with SQL_MCP_VERIFY_EVIDENCE to pin a single directory.
  */
 export function evidenceRoots() {
-  if (process.env.MSSQL_MCP_VERIFY_EVIDENCE) {
-    return [path.resolve(process.env.MSSQL_MCP_VERIFY_EVIDENCE)];
+  if (process.env.SQL_MCP_VERIFY_EVIDENCE) {
+    return [path.resolve(process.env.SQL_MCP_VERIFY_EVIDENCE)];
   }
   return [
-    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'mssql-mcp-verify') : null,
-    path.join(os.tmpdir(), 'mssql-mcp-verify'),
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'sql-mcp-verify') : null,
+    path.join(os.tmpdir(), 'sql-mcp-verify'),
   ].filter(Boolean);
 }
 
@@ -102,7 +102,7 @@ export function evidenceRoot() {
   }
   throw new Error(
     `No writable evidence root outside the repository. Tried ${errors.join('; ')}. ` +
-      'Set MSSQL_MCP_VERIFY_EVIDENCE to a writable directory outside the repository.',
+      'Set SQL_MCP_VERIFY_EVIDENCE to a writable directory outside the repository.',
   );
 }
 
@@ -245,12 +245,12 @@ export async function withDirectConnection(fn) {
   const connection = resolveConnection();
   if (!EXPECTED_LOGIN) {
     throw new Error(
-      'MSSQL_MCP_VERIFY_LOGIN is not set. Add it to .env (or the environment) with the read-only login this skill expects.',
+      'SQL_MCP_VERIFY_LOGIN is not set. Add it to .env (or the environment) with the read-only login this skill expects.',
     );
   }
   if (connection.username !== EXPECTED_LOGIN) {
     throw new Error(
-      `Refusing to connect as "${connection.username}". This skill only ever uses the login in MSSQL_MCP_VERIFY_LOGIN.`,
+      `Refusing to connect as "${connection.username}". This skill only ever uses the login in SQL_MCP_VERIFY_LOGIN.`,
     );
   }
   const pool = await new sql.ConnectionPool({
@@ -367,9 +367,9 @@ export class RawSession {
       SystemRoot: process.env.SystemRoot,
       TEMP: process.env.TEMP,
       TMP: process.env.TMP,
-      MSSQL_MCP_CONFIG: CONFIG_PATH,
-      MSSQL_MCP_DATA_DIR: path.join(this.runDir, 'mcp-data'),
-      MSSQL_MCP_VERIFY_RUN_ID: path.basename(this.runDir),
+      SQL_MCP_CONFIG: CONFIG_PATH,
+      SQL_MCP_DATA_DIR: path.join(this.runDir, 'mcp-data'),
+      SQL_MCP_VERIFY_RUN_ID: path.basename(this.runDir),
     };
     this.child = spawn(process.execPath, [ENTRY], {
       cwd: REPO,
@@ -471,9 +471,9 @@ export async function sdkSession({ label, runDir, redact, onClose }) {
     cwd: REPO,
     stderr: 'pipe',
     env: {
-      MSSQL_MCP_CONFIG: CONFIG_PATH,
-      MSSQL_MCP_DATA_DIR: path.join(runDir, 'mcp-data'),
-      MSSQL_MCP_VERIFY_RUN_ID: path.basename(runDir),
+      SQL_MCP_CONFIG: CONFIG_PATH,
+      SQL_MCP_DATA_DIR: path.join(runDir, 'mcp-data'),
+      SQL_MCP_VERIFY_RUN_ID: path.basename(runDir),
     },
   });
   let stderr = '';

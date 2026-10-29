@@ -1,4 +1,4 @@
-// drive.mjs — one serialized drive of the mssql-mcp stdio server against production.
+// drive.mjs — one serialized drive of the sql-mcp stdio server against production.
 //
 // What "done" requires, and where each piece is proven:
 //   1. one MCP client session: initialize + tools/list .......... session A (raw JSON-RPC frames)
@@ -17,7 +17,7 @@
 //   * Evidence is written outside the repository and the password is redacted in every artifact.
 //
 // Usage:
-//   node .agents/skills/verify-mssql-mcp/scripts/drive.mjs --run <doctor run dir>
+//   node .agents/skills/verify-sql-mcp/scripts/drive.mjs --run <doctor run dir>
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -211,7 +211,7 @@ async function main() {
       clientInfo: { name: 'verify-raw', version: '1.0.0' },
     });
     results.initialize = initA.result;
-    report.check('mcp.initialize', initA.result?.serverInfo?.name === 'mssql-mcp', initA.result);
+    report.check('mcp.initialize', initA.result?.serverInfo?.name === 'sql-mcp', initA.result);
     sessionA.notify('notifications/initialized', {});
 
     const listA = await sessionA.request('tools/list', {});
@@ -500,7 +500,7 @@ async function main() {
     );
 
     // ---------------------------------------------------------------- local query workspace
-    // Scratch state only: MSSQL_MCP_DATA_DIR points inside the run directory.
+    // Scratch state only: SQL_MCP_DATA_DIR points inside the run directory.
     results.workspace = {};
 
     const folder = await callA('manage_query_folders', {

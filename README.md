@@ -1,11 +1,11 @@
-# mssql-mcp
+# sql-mcp
 
 A local stdio MCP server for Microsoft SQL Server and MySQL. It gives an MCP client read access to
 a database: browse connections, databases, tables, and columns, run bounded queries, and keep saved
 queries and tabs in a local workspace.
 
-The name predates the second dialect. Both are supported through the same twelve tools, and one
-`config.json` can hold connections of either kind side by side.
+Both dialects are supported through the same twelve tools, and one `config.json` can hold
+connections of either kind side by side.
 
 It works with any MCP client that can launch a local process. No HTTP port, no bearer token, no
 GUI.
@@ -20,7 +20,7 @@ GUI.
 The client launches the server as a child process and talks JSON-RPC over stdin and stdout:
 
 ```text
-MCP client -> stdio -> mssql-mcp -> TCP -> SQL Server or MySQL
+MCP client -> stdio -> sql-mcp -> TCP -> SQL Server or MySQL
 ```
 
 Nothing listens on a port. This avoids DB Atelier's local HTTP port, bearer token, startup
@@ -29,8 +29,8 @@ ordering, and `localhost` IPv4/IPv6 behaviour.
 ## Install
 
 ```bash
-git clone <repository-url> mssql-mcp
-cd mssql-mcp
+git clone <repository-url> sql-mcp
+cd sql-mcp
 npm ci
 ```
 
@@ -54,8 +54,8 @@ Copy-Item .env.example .env
       "host": "127.0.0.1",
       "port": 1433,
       "database": "YourDatabase",
-      "username_env": "MSSQL_MCP_USERNAME",
-      "password_env": "MSSQL_MCP_PASSWORD",
+      "username_env": "SQL_MCP_USERNAME",
+      "password_env": "SQL_MCP_PASSWORD",
       "read_only": true,
       "max_row_limit": 500,
       "query_timeout_ms": 60000,
@@ -74,8 +74,8 @@ Set the credentials in `.env` beside `config.json`. The variable names must matc
 `password_env`:
 
 ```dotenv
-MSSQL_MCP_USERNAME=your-sql-login
-MSSQL_MCP_PASSWORD=your-real-password
+SQL_MCP_USERNAME=your-sql-login
+SQL_MCP_PASSWORD=your-real-password
 ```
 
 | Field | Default | Purpose |
@@ -146,15 +146,15 @@ bounded, but it is measured differently on the two dialects.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `MSSQL_MCP_CONFIG` | `./config.json` | Path to the configuration file. |
-| `MSSQL_MCP_DATA_DIR` | `./data` | Where saved queries, folders, and tabs persist. |
-| `MSSQL_MCP_DOTENV` | `.env` beside `config.json` | Path to the dotenv file. |
+| `SQL_MCP_CONFIG` | `./config.json` | Path to the configuration file. |
+| `SQL_MCP_DATA_DIR` | `./data` | Where saved queries, folders, and tabs persist. |
+| `SQL_MCP_DOTENV` | `.env` beside `config.json` | Path to the dotenv file. |
 
-Defaults resolve against the process working directory, so set `MSSQL_MCP_CONFIG` to an absolute
+Defaults resolve against the process working directory, so set `SQL_MCP_CONFIG` to an absolute
 path when the client does not launch the server from the repository root.
 
 Explicit process environment variables win over `.env`. The server loads `.env` from beside
-`config.json` unless you set `MSSQL_MCP_DOTENV`.
+`config.json` unless you set `SQL_MCP_DOTENV`.
 
 ### Use a least-privilege login
 
@@ -167,7 +167,7 @@ server even if the read-only guard has a bug. Do not use `sa`.
 ## Connect your client
 
 The server writes only JSON-RPC to stdout. Diagnostics go to stderr. Point every client at the same
-`src/index.js`, and set `MSSQL_MCP_CONFIG` to an absolute path.
+`src/index.js`, and set `SQL_MCP_CONFIG` to an absolute path.
 
 ### Claude Desktop and Claude Code
 
@@ -177,12 +177,12 @@ Claude Desktop reads `claude_desktop_config.json`. On Windows that is
 ```json
 {
   "mcpServers": {
-    "mssql": {
+    "sql-mcp": {
       "command": "node",
-      "args": ["C:/path/to/mssql-mcp/src/index.js"],
+      "args": ["C:/path/to/sql-mcp/src/index.js"],
       "env": {
-        "MSSQL_MCP_CONFIG": "C:/path/to/mssql-mcp/config.json",
-        "MSSQL_MCP_DATA_DIR": "C:/path/to/mssql-mcp/data"
+        "SQL_MCP_CONFIG": "C:/path/to/sql-mcp/config.json",
+        "SQL_MCP_DATA_DIR": "C:/path/to/sql-mcp/data"
       }
     }
   }
@@ -193,7 +193,7 @@ Claude Code reads a project `.mcp.json` with the same `mcpServers` shape. Add `"
 the entry, or use the CLI:
 
 ```bash
-claude mcp add mssql --env MSSQL_MCP_CONFIG=/path/to/config.json -- node /path/to/src/index.js
+claude mcp add sql-mcp --env SQL_MCP_CONFIG=/path/to/config.json -- node /path/to/src/index.js
 ```
 
 ### VS Code
@@ -203,13 +203,13 @@ VS Code reads `.vscode/mcp.json` with a `servers` key, and requires `"type": "st
 ```json
 {
   "servers": {
-    "mssql": {
+    "sql-mcp": {
       "type": "stdio",
       "command": "node",
-      "args": ["C:/path/to/mssql-mcp/src/index.js"],
+      "args": ["C:/path/to/sql-mcp/src/index.js"],
       "env": {
-        "MSSQL_MCP_CONFIG": "C:/path/to/mssql-mcp/config.json",
-        "MSSQL_MCP_DATA_DIR": "C:/path/to/mssql-mcp/data"
+        "SQL_MCP_CONFIG": "C:/path/to/sql-mcp/config.json",
+        "SQL_MCP_DATA_DIR": "C:/path/to/sql-mcp/data"
       }
     }
   }
@@ -231,12 +231,12 @@ Zed reads `context_servers` in its settings file. Add the entry under that exist
 ```json
 {
   "context_servers": {
-    "mssql": {
+    "sql-mcp": {
       "command": "node",
-      "args": ["C:/path/to/mssql-mcp/src/index.js"],
+      "args": ["C:/path/to/sql-mcp/src/index.js"],
       "env": {
-        "MSSQL_MCP_CONFIG": "C:/path/to/mssql-mcp/config.json",
-        "MSSQL_MCP_DATA_DIR": "C:/path/to/mssql-mcp/data"
+        "SQL_MCP_CONFIG": "C:/path/to/sql-mcp/config.json",
+        "SQL_MCP_DATA_DIR": "C:/path/to/sql-mcp/data"
       }
     }
   }
@@ -248,16 +248,16 @@ Zed reads `context_servers` in its settings file. Add the entry under that exist
 Codex reads `~/.codex/config.toml`, or `.codex/config.toml` in a trusted project:
 
 ```toml
-[mcp_servers.mssql]
+[mcp_servers.sql-mcp]
 command = "node"
-args = ["C:/path/to/mssql-mcp/src/index.js"]
-env = { MSSQL_MCP_CONFIG = "C:/path/to/mssql-mcp/config.json", MSSQL_MCP_DATA_DIR = "C:/path/to/mssql-mcp/data" }
+args = ["C:/path/to/sql-mcp/src/index.js"]
+env = { SQL_MCP_CONFIG = "C:/path/to/sql-mcp/config.json", SQL_MCP_DATA_DIR = "C:/path/to/sql-mcp/data" }
 ```
 
 Or add it from the shell:
 
 ```bash
-codex mcp add mssql --env MSSQL_MCP_CONFIG=/path/to/config.json -- node /path/to/src/index.js
+codex mcp add sql-mcp --env SQL_MCP_CONFIG=/path/to/config.json -- node /path/to/src/index.js
 ```
 
 ### After you change the configuration
@@ -290,7 +290,7 @@ The server provides 12 tools:
 `open_table` returns a bounded preview of up to 100 rows. A stdio server cannot open a DB Atelier
 GUI window, so the tool returns the data instead.
 
-The three `manage_*` tools write local workspace state under `MSSQL_MCP_DATA_DIR`. They never write
+The three `manage_*` tools write local workspace state under `SQL_MCP_DATA_DIR`. They never write
 to the database, except that `manage_query_tab` with `execute: true` runs the tab's SQL through the
 same guard as `execute_sql`.
 
@@ -366,22 +366,22 @@ The test suite proves behaviour without a database. To prove the server works ag
 instance, drive it with an MCP client. This repository ships a verification skill for that:
 
 ```powershell
-node .agents/skills/verify-mssql-mcp/scripts/doctor.mjs
-node .agents/skills/verify-mssql-mcp/scripts/drive.mjs --run <run dir from doctor>
-node .agents/skills/verify-mssql-mcp/scripts/cleanup.mjs --run <run dir>
+node .agents/skills/verify-sql-mcp/scripts/doctor.mjs
+node .agents/skills/verify-sql-mcp/scripts/drive.mjs --run <run dir from doctor>
+node .agents/skills/verify-sql-mcp/scripts/cleanup.mjs --run <run dir>
 ```
 
 Doctor proves the login is read-only before anything is driven, and the drive records every JSON-RPC
 frame, a read result checked against a second independent session, and a write attempt refused by
-both the guard and the server. See `.agents/skills/verify-mssql-mcp/SKILL.md`.
+both the guard and the server. See `.agents/skills/verify-sql-mcp/SKILL.md`.
 
 MySQL has its own pair, because the safety argument is different: a local MySQL login usually holds
 write permission, so the guard is what refuses a write and the doctor proves the guard statement by
 statement instead of proving the login is powerless.
 
 ```powershell
-node .agents/skills/verify-mssql-mcp/scripts/mysql-doctor.mjs
-node .agents/skills/verify-mssql-mcp/scripts/mysql-drive.mjs --run <run dir from doctor>
+node .agents/skills/verify-sql-mcp/scripts/mysql-doctor.mjs
+node .agents/skills/verify-sql-mcp/scripts/mysql-drive.mjs --run <run dir from doctor>
 ```
 
 The skill targets one specific production instance. Change the expected login and database in its
@@ -394,8 +394,3 @@ permissions. That refusal is the point, not a bug.
 If you drive the server against a real database by hand, use read-only SQL such as `SELECT 1` and
 never run a destructive statement. Do not wrap a write in `BEGIN TRAN ... ROLLBACK` as a safety
 net. A write transaction on a production table blocks other users. Rely on permissions instead.
-
-## Design record
-
-The tool-parity design and its rationale are in
-`docs/designs/2026-09-14-mssql-mcp-tool-parity.md`.

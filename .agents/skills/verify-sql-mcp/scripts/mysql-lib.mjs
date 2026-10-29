@@ -1,4 +1,4 @@
-// Shared helpers for the MySQL half of the verify-mssql-mcp skill.
+// Shared helpers for the MySQL half of the verify-sql-mcp skill.
 //
 // The MCP session machinery, reporting and evidence handling are dialect-neutral and are imported
 // from lib.mjs. What is MySQL-specific lives here: the read target, the probes that must be refused,
@@ -32,8 +32,8 @@ export {
   writeJson,
 } from './lib.mjs';
 
-export const MYSQL_CONNECTION_NAME = process.env.MSSQL_MCP_VERIFY_MYSQL_CONNECTION || 'mysql';
-export const MYSQL_EXPECTED_LOGIN = process.env.MSSQL_MCP_VERIFY_MYSQL_LOGIN || null;
+export const MYSQL_CONNECTION_NAME = process.env.SQL_MCP_VERIFY_MYSQL_CONNECTION || 'mysql';
+export const MYSQL_EXPECTED_LOGIN = process.env.SQL_MCP_VERIFY_MYSQL_LOGIN || null;
 export const MYSQL_READ_SCHEMA = 'eosys';
 export const MYSQL_READ_TABLE = 'departments';
 export const MYSQL_READ_SQL = `SELECT id, dept_id, name, sup_dept_id FROM ${MYSQL_READ_TABLE} ORDER BY id`;
@@ -154,7 +154,7 @@ export async function withMysqlDirect(fn) {
   const connection = resolveMysqlConnection();
   if (MYSQL_EXPECTED_LOGIN && connection.username !== MYSQL_EXPECTED_LOGIN) {
     throw new Error(
-      `Refusing to connect as "${connection.username}". This skill only ever uses the login in MSSQL_MCP_VERIFY_MYSQL_LOGIN.`,
+      `Refusing to connect as "${connection.username}". This skill only ever uses the login in SQL_MCP_VERIFY_MYSQL_LOGIN.`,
     );
   }
   const pool = mysql.createPool({

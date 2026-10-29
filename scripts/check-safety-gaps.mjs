@@ -33,7 +33,7 @@ function gap1() {
     }),
   );
   const config = loadConfig({
-    env: { MSSQL_MCP_CONFIG: path.join(dir, 'config.json'), U: 'u', P: 'p' },
+    env: { SQL_MCP_CONFIG: path.join(dir, 'config.json'), U: 'u', P: 'p' },
   });
   const readOnly = config.connections[0].read_only;
   record('read_only defaults to true when the key is absent', readOnly === true, { readOnly });
@@ -129,8 +129,8 @@ function gap3() {
         PATH: process.env.PATH,
         SystemRoot: process.env.SystemRoot,
         TEMP: process.env.TEMP,
-        MSSQL_MCP_CONFIG: path.join(root, 'config.json'),
-        MSSQL_MCP_DATA_DIR: path.join(os.tmpdir(), 'gap-eof-data'),
+        SQL_MCP_CONFIG: path.join(root, 'config.json'),
+        SQL_MCP_DATA_DIR: path.join(os.tmpdir(), 'gap-eof-data'),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

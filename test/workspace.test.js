@@ -7,7 +7,7 @@ import { WorkspaceStore } from '../src/workspace-store.js';
 import { createWorkspaceTools } from '../src/tools/workspace-tools.js';
 
 function tempDirectory() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'mssql-mcp-workspace-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'sql-mcp-workspace-'));
 }
 
 function textResult(result) {

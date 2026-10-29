@@ -4,8 +4,8 @@
 // exits non-zero and writes proof.readOnly=false. drive.mjs refuses to run without readOnly=true.
 //
 // Usage:
-//   node .agents/skills/verify-mssql-mcp/scripts/doctor.mjs
-//   node .agents/skills/verify-mssql-mcp/scripts/doctor.mjs --run <dir>
+//   node .agents/skills/verify-sql-mcp/scripts/doctor.mjs
+//   node .agents/skills/verify-sql-mcp/scripts/doctor.mjs --run <dir>
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -147,10 +147,10 @@ async function main() {
       { expected: CONNECTION_NAME, selected: facts.connectionName, available: facts.connectionNames },
     );
     report.check('config.expected-login-set', Boolean(EXPECTED_LOGIN), {
-      detail: 'set MSSQL_MCP_VERIFY_LOGIN in .env or the environment',
+      detail: 'set SQL_MCP_VERIFY_LOGIN in .env or the environment',
     });
     report.check('config.expected-server-set', Boolean(EXPECTED_SERVER), {
-      detail: 'set MSSQL_MCP_VERIFY_SERVER in .env or the environment',
+      detail: 'set SQL_MCP_VERIFY_SERVER in .env or the environment',
     });
     report.note('config.connections-present', { names: facts.connectionNames });
     report.check('config.login', facts.configuredLogin === EXPECTED_LOGIN, {

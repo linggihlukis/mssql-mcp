@@ -214,9 +214,9 @@ function dialectOptions(rawOptions, dialect, connectionName) {
 }
 
 export function loadConfig({ env = process.env } = {}) {
-  const configPath = path.resolve(env.MSSQL_MCP_CONFIG || DEFAULT_CONFIG_PATH);
+  const configPath = path.resolve(env.SQL_MCP_CONFIG || DEFAULT_CONFIG_PATH);
   const dotenvPath = path.resolve(
-    env.MSSQL_MCP_DOTENV || path.join(path.dirname(configPath), DEFAULT_DOTENV_FILE),
+    env.SQL_MCP_DOTENV || path.join(path.dirname(configPath), DEFAULT_DOTENV_FILE),
   );
   const mergedEnv = { ...readDotEnvFile(dotenvPath), ...env };
   const rawConfig = readJsonFile(configPath);
@@ -242,7 +242,7 @@ export function loadConfig({ env = process.env } = {}) {
   return {
     configPath,
     dotenvPath,
-    dataDir: path.resolve(mergedEnv.MSSQL_MCP_DATA_DIR || DEFAULT_DATA_DIR),
+    dataDir: path.resolve(mergedEnv.SQL_MCP_DATA_DIR || DEFAULT_DATA_DIR),
     connections,
   };
 }

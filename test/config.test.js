@@ -6,7 +6,7 @@ import test from 'node:test';
 import { loadConfig } from '../src/config.js';
 
 function temporaryConfig(config) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mssql-mcp-config-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sql-mcp-config-'));
   const filePath = path.join(directory, 'config.json');
   fs.writeFileSync(filePath, JSON.stringify(config));
   return { directory, filePath };
@@ -28,7 +28,7 @@ test('loadConfig — environment password — loads a normalized MSSQL connectio
 
   const config = loadConfig({
     env: {
-      MSSQL_MCP_CONFIG: filePath,
+      SQL_MCP_CONFIG: filePath,
       TEST_MSSQL_USERNAME: 'reader',
       TEST_MSSQL_PASSWORD: 'secret-not-logged',
     },
@@ -53,7 +53,7 @@ test('loadConfig — local .env — loads credentials beside config.json', () =>
     }],
   });
   fs.writeFileSync(path.join(directory, '.env'), 'LOCAL_TEST_USERNAME=reader\nLOCAL_TEST_PASSWORD="dotenv-secret"\n');
-  const config = loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } });
+  const config = loadConfig({ env: { SQL_MCP_CONFIG: filePath } });
   assert.equal(config.connections[0].username, 'reader');
   assert.equal(config.connections[0].password, 'dotenv-secret');
   assert.equal(config.dotenvPath, path.join(directory, '.env'));
@@ -73,7 +73,7 @@ test('loadConfig — explicit environment — overrides local .env credentials',
   fs.writeFileSync(path.join(directory, '.env'), 'LOCAL_TEST_USERNAME=dotenv-user\nLOCAL_TEST_PASSWORD=dotenv-password\n');
   const config = loadConfig({
     env: {
-      MSSQL_MCP_CONFIG: filePath,
+      SQL_MCP_CONFIG: filePath,
       LOCAL_TEST_USERNAME: 'explicit-user',
       LOCAL_TEST_PASSWORD: 'explicit-password',
     },
@@ -97,7 +97,7 @@ test('loadConfig — missing environment password — fails before database acce
   });
 
   assert.throws(
-    () => loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } }),
+    () => loadConfig({ env: { SQL_MCP_CONFIG: filePath } }),
     /needs a password through password_env/,
   );
   fs.rmSync(directory, { recursive: true, force: true });
@@ -114,7 +114,7 @@ test('loadConfig — MySQL connection — accepts an empty password and the 3306
       password: '',
     }],
   });
-  const config = loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } });
+  const config = loadConfig({ env: { SQL_MCP_CONFIG: filePath } });
   assert.equal(config.connections[0].db_type, 'mysql');
   assert.equal(config.connections[0].password, '');
   assert.equal(config.connections[0].port, 3306);
@@ -134,7 +134,7 @@ test('loadConfig — SQL Server connection — still refuses an empty password',
     }],
   });
   assert.throws(
-    () => loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } }),
+    () => loadConfig({ env: { SQL_MCP_CONFIG: filePath } }),
     /needs a password/,
   );
   fs.rmSync(directory, { recursive: true, force: true });
@@ -153,7 +153,7 @@ test('loadConfig — option from another dialect — is rejected instead of sile
     }],
   });
   assert.throws(
-    () => loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } }),
+    () => loadConfig({ env: { SQL_MCP_CONFIG: filePath } }),
     /option "encrypt", which belongs to db_type "mssql", not "mysql"/,
   );
   fs.rmSync(directory, { recursive: true, force: true });
@@ -171,7 +171,7 @@ test('loadConfig — unknown db_type — names the supported dialects', () => {
     }],
   });
   assert.throws(
-    () => loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } }),
+    () => loadConfig({ env: { SQL_MCP_CONFIG: filePath } }),
     /use mssql or mysql/,
   );
   fs.rmSync(directory, { recursive: true, force: true });
@@ -198,7 +198,7 @@ test('loadConfig — duplicate connection names — rejects ambiguous configurat
   });
 
   assert.throws(
-    () => loadConfig({ env: { MSSQL_MCP_CONFIG: filePath } }),
+    () => loadConfig({ env: { SQL_MCP_CONFIG: filePath } }),
     /Duplicate connection name/,
   );
   fs.rmSync(directory, { recursive: true, force: true });

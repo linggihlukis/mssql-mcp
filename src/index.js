@@ -13,12 +13,12 @@ import { createWorkspaceTools } from './tools/workspace-tools.js';
 import { databaseToolSchemas, workspaceToolSchemas } from './tools/schemas.js';
 
 const SERVER_INFO = {
-  name: 'mssql-mcp',
+  name: 'sql-mcp',
   version: '0.1.0',
 };
 
 function logError(message, error) {
-  process.stderr.write(`[mssql-mcp] ${message}: ${errorMessage(error)}\n`);
+  process.stderr.write(`[sql-mcp] ${message}: ${errorMessage(error)}\n`);
 }
 
 function registerTools(server, handlers) {
