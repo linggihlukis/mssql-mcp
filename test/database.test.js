@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DatabaseManager, assertReadOnlyQuery, normalizeResult, quoteIdentifier, quoteMultipartIdentifier } from '../src/database.js';
+import { DatabaseManager, assertReadOnlyQuery, normalizeResult } from '../src/database.js';
+import { createMssqlDialect, quoteIdentifier, quoteMultipartIdentifier } from '../src/dialects/mssql.js';
 
 function fakeConfig() {
   return {
@@ -147,7 +148,7 @@ test('DatabaseManager — read-only connection — rejects writes before opening
   }
 
   const manager = new DatabaseManager(fakeConfig(), {
-    driver: { ConnectionPool: FakePool },
+    dialects: { mssql: createMssqlDialect({ driver: { ConnectionPool: FakePool } }) },
   });
 
   assert.deepEqual(manager.listConnections(), [

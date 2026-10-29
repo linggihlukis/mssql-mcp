@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AppError } from './errors.js';
+import { DIALECTS } from './dialects/index.js';
 
 const DEFAULT_CONFIG_PATH = path.resolve(process.cwd(), 'config.json');
 const DEFAULT_DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -106,10 +107,12 @@ function normalizeConnection(rawConnection, index, env) {
 
   const name = requiredString(rawConnection.name, 'name', `index ${index}`);
   const dbType = String(rawConnection.db_type ?? 'mssql').toLowerCase();
-  if (dbType !== 'mssql') {
-    throw new AppError(`Connection "${name}" has unsupported db_type "${dbType}".`, {
-      code: 'CONFIG_INVALID',
-    });
+  const dialect = DIALECTS[dbType];
+  if (!dialect) {
+    throw new AppError(
+      `Connection "${name}" has unsupported db_type "${dbType}"; use ${Object.keys(DIALECTS).join(' or ')}.`,
+      { code: 'CONFIG_INVALID' },
+    );
   }
 
   const username = rawConnection.username_env
@@ -125,7 +128,11 @@ function normalizeConnection(rawConnection, index, env) {
       { code: 'CONFIG_SECRET_MISSING' },
     );
   }
-  if (typeof password !== 'string' || password.length === 0) {
+  // An empty password is a real configuration for MySQL (Laragon ships accounts with none). A
+  // password that is not there at all is still a missing secret.
+  const passwordAllowed = typeof password === 'string'
+    && (password.length > 0 || dialect.config.allowEmptyPassword);
+  if (!passwordAllowed) {
     throw new AppError(
       `Connection "${name}" needs a password through password_env or a non-empty password value.`,
       { code: 'CONFIG_SECRET_MISSING' },
@@ -133,7 +140,7 @@ function normalizeConnection(rawConnection, index, env) {
   }
 
   const host = requiredString(rawConnection.host, 'host', name);
-  const port = positiveInteger(rawConnection.port, 1433, 'port', name);
+  const port = positiveInteger(rawConnection.port, dialect.config.defaultPort, 'port', name);
   const database = requiredString(rawConnection.database, 'database', name);
   const normalizedUsername = requiredString(username, 'username', name);
   const maxRowLimit = positiveInteger(
@@ -174,12 +181,36 @@ function normalizeConnection(rawConnection, index, env) {
     max_result_bytes: maxResultBytes,
     query_timeout_ms: queryTimeoutMs,
     connection_timeout_ms: connectionTimeoutMs,
-    options: {
-      encrypt: rawConnection.options?.encrypt ?? false,
-      trustServerCertificate: rawConnection.options?.trustServerCertificate ?? true,
-      enableArithAbort: rawConnection.options?.enableArithAbort ?? true,
-    },
+    options: dialectOptions(rawConnection.options, dialect, name),
   };
+}
+
+/**
+ * Options for one connection, restricted to the keys its dialect reads.
+ *
+ * A key another dialect owns is rejected rather than dropped, because `encrypt: true` on a MySQL
+ * entry states TLS intent that mysql2 would silently ignore. A key no dialect owns is kept, which
+ * is how this has always behaved.
+ */
+function dialectOptions(rawOptions, dialect, connectionName) {
+  if (rawOptions === undefined) return { ...dialect.config.optionDefaults };
+  if (!rawOptions || typeof rawOptions !== 'object' || Array.isArray(rawOptions)) {
+    throw new AppError(`Connection "${connectionName}" has invalid options.`, {
+      code: 'CONFIG_INVALID',
+    });
+  }
+  const own = dialect.config.optionKeys;
+  for (const key of Object.keys(rawOptions)) {
+    if (own.includes(key)) continue;
+    const owner = Object.values(DIALECTS).find((other) => other.config.optionKeys.includes(key));
+    if (owner) {
+      throw new AppError(
+        `Connection "${connectionName}" has option "${key}", which belongs to db_type "${owner.name}", not "${dialect.name}".`,
+        { code: 'CONFIG_INVALID' },
+      );
+    }
+  }
+  return { ...dialect.config.optionDefaults, ...rawOptions };
 }
 
 export function loadConfig({ env = process.env } = {}) {

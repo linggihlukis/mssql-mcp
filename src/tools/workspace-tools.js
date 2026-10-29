@@ -1,4 +1,3 @@
-import { quoteIdentifier } from '../database.js';
 import { AppError } from '../errors.js';
 import { listResult, maxBytesFor, toolResult } from './tool-result.js';
 
@@ -11,7 +10,7 @@ function required(value, field) {
 
 function scopedArgs(database, args) {
   if (args.database || !args.connection) return args;
-  return { ...args, database: database.getConnection(args.connection).database };
+  return { ...args, database: database.defaultDatabase(args.connection) };
 }
 
 export function createWorkspaceTools({ database, workspace }) {
@@ -107,21 +106,19 @@ export function createWorkspaceTools({ database, workspace }) {
     },
 
     open_table: async ({ connection, schema, table }) => {
-      const schemaName = schema || 'dbo';
-      const safeSchema = quoteIdentifier(schemaName, 'schema');
-      const safeTable = quoteIdentifier(required(table, 'table'), 'table');
-      const result = await database.query(
+      const { schema: effectiveSchema, result } = await database.previewTable({
         connection,
-        `SELECT TOP (100) * FROM ${safeSchema}.${safeTable};`,
-        { rowLimit: 100 },
-      );
+        schema,
+        table: required(table, 'table'),
+        limit: 100,
+      });
       const maxBytes = maxBytesFor(database, connection);
       return listResult({
         list: result.rows,
         maxBytes,
         build: (kept, marker) => ({
           connection,
-          schema: schemaName,
+          schema: effectiveSchema,
           table,
           preview: {
             ...result,

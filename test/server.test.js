@@ -19,12 +19,6 @@ function makeContext() {
     }],
     getConnection: () => ({ database: 'master', max_result_bytes: 262_144 }),
     listConnections: () => [{ name: 'local' }],
-    getPool: async () => ({
-      request: () => ({
-        input() {},
-        query: async () => ({ recordset: [{ name: 'master' }] }),
-      }),
-    }),
     query: async () => ({
       columns: [{ name: 'connection_test' }],
       row_count: 1,

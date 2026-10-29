@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseManager } from '../src/database.js';
+import { createMssqlDialect } from '../src/dialects/mssql.js';
 import { WorkspaceStore } from '../src/workspace-store.js';
 import { createDatabaseTools } from '../src/tools/database-tools.js';
 import { createWorkspaceTools } from '../src/tools/workspace-tools.js';
@@ -117,7 +118,7 @@ function fakeDatabase() {
         options: { encrypt: false, trustServerCertificate: true },
       }],
     },
-    { driver: { ConnectionPool: FakePool } },
+    { dialects: { mssql: createMssqlDialect({ driver: { ConnectionPool: FakePool } }) } },
   );
 }
 

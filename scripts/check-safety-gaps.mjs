@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseManager, normalizeResult } from '../src/database.js';
+import { createMssqlDialect } from '../src/dialects/mssql.js';
 import { loadConfig } from '../src/config.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -53,7 +54,9 @@ function gap1() {
     async close() {}
   }
   return (async () => {
-    const manager = new DatabaseManager(config, { driver: { ConnectionPool: FakePool } });
+    const manager = new DatabaseManager(config, {
+      dialects: { mssql: createMssqlDialect({ driver: { ConnectionPool: FakePool } }) },
+    });
     let outcome;
     try {
       await manager.query('c', 'DELETE FROM dbo.Users WHERE 1 = 0');

@@ -17,6 +17,22 @@
         "trustServerCertificate": true,
         "enableArithAbort": true
       }
+    },
+    {
+      "name": "mysql",
+      "db_type": "mysql",
+      "host": "127.0.0.1",
+      "port": 3306,
+      "database": "YourDatabase",
+      "username_env": "MYSQL_USERNAME",
+      "password_env": "MYSQL_PASSWORD",
+      "read_only": true,
+      "max_row_limit": 500,
+      "query_timeout_ms": 60000,
+      "connection_timeout_ms": 10000,
+      "options": {
+        "charset": "utf8mb4"
+      }
     }
   ]
 }

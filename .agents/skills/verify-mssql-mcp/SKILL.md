@@ -158,6 +158,58 @@ If the read-only guard were removed or broken, these still fail with `229 The IN
 permission was denied`. A broken guard yields a permission error, never a mutation. This is why the
 read-only proof is a precondition: the negative test is only safe because of it.
 
+## MySQL
+
+The server speaks two dialects. `mysql-doctor.mjs` and `mysql-drive.mjs` are the MySQL counterparts
+of the two commands above, and they share the session machinery, reporting and evidence handling in
+`lib.mjs`.
+
+```powershell
+node .agents/skills/verify-mssql-mcp/scripts/mysql-doctor.mjs
+node .agents/skills/verify-mssql-mcp/scripts/mysql-drive.mjs --run <run dir printed by doctor>
+```
+
+They drive the connection named `mysql` in `config.json` — the local Laragon server on
+`127.0.0.1:3306`, schema `eosys`, table `departments`. Override the connection with
+`MSSQL_MCP_VERIFY_MYSQL_CONNECTION`. The read target is fixed in `mysql-lib.mjs` rather than
+discovered, so a run cannot silently drift to another table.
+
+**The MySQL login is not read-only, and this is the one place the two dialects differ in kind.**
+`eosys` holds `ALL PRIVILEGES` on its own schemas (recorded as `direct.grants` in the doctor). A
+MySQL doctor therefore cannot prove safety the way the SQL Server one does, by showing the login is
+powerless. The read-only guard is the enforcement point, so the doctor proves it directly:
+
+| Check | Requirement |
+| --- | --- |
+| `config.connection` | `db_type: mysql`, `read_only: true` |
+| `guard.<probe>` | each of 15 write forms is refused with `READ_ONLY_VIOLATION` |
+| `guard.probes-never-reach-the-driver` | a counting dialect records zero statements from any probe |
+| `guard.a-read-does-reach-the-driver` | the same counter sees exactly one statement for a real read |
+| `driver.multiple-statements-refused` | a raw mysql2 pool rejects `SELECT 1; SELECT 2` |
+| `direct.*` | version, current schema, the read, column metadata, fingerprint, object count |
+
+The probes are the forms MySQL accepts that a naive guard misses. Each was confirmed against this
+server before it was written down: `SELECT ... INTO OUTFILE` and `INTO DUMPFILE` (this server sets
+`secure-file-priv=""`, so OUTFILE writes a file), `SELECT ... INTO @var`, `FOR UPDATE`,
+`LOCK IN SHARE MODE`, `WITH ... UPDATE`, `WITH ... DELETE`, `EXPLAIN ANALYZE UPDATE`, and a write
+hidden inside an executable comment (`/*!50000 ... */`, which MySQL runs). Multi-statement is
+covered twice, by the guard and by `multipleStatements: false`.
+
+`mysql-drive.mjs` proves the same shape as the SQL Server drive — two independent sessions, a direct
+connection as the witness, every refusal named, and a fingerprint that must not move — plus three
+things specific to MySQL:
+
+- **Schema equals database.** Every recorded call must name the `mysql` connection and either omit
+  `schema`/`database` or name `eosys`; the audit treats both keys as the same scope escape.
+- **Column metadata against `information_schema`.** Types, nullability and `COLUMN_KEY = 'PRI'` are
+  compared to what the catalog says, not to what the tool said last time. This is where a string
+  leaking through as a boolean would surface, since `Boolean('NO')` is `true`.
+- **Both dialects in one server.** `list_connections` must report the mssql and mysql entries side
+  by side, which is the only check that the dialect seam holds for a mixed config.
+
+The `eosys` schema declares no foreign keys, so `get_erd` returning `total_relationships: 0` is
+recorded as `INFO`, not asserted. A non-zero count there would be a fabricated edge.
+
 ## Evidence
 
 Evidence goes outside the repository, because JSON-RPC frames contain production rows. The root is
@@ -239,6 +291,8 @@ the MCP SDK from the repo's `node_modules`, so no install step is needed.
 | `node .agents/skills/verify-mssql-mcp/scripts/doctor.mjs` | Prove read-only; writes `proof.json`; exit `2` = blocked |
 | `node .agents/skills/verify-mssql-mcp/scripts/drive.mjs --run <dir>` | One serialized drive; writes `drive.json` |
 | `node .agents/skills/verify-mssql-mcp/scripts/cleanup.mjs --run <dir>` | Stop this run's processes, remove scratch, keep evidence |
+| `node .agents/skills/verify-mssql-mcp/scripts/mysql-doctor.mjs` | Prove the MySQL guard and capture the baseline; writes `mysql-doctor.json`; exit `2` = blocked |
+| `node .agents/skills/verify-mssql-mcp/scripts/mysql-drive.mjs --run <dir>` | One serialized MySQL drive; writes `mysql-drive.json` |
 
 Set `MSSQL_MCP_VERIFY_LOGIN` and `MSSQL_MCP_VERIFY_SERVER` in `.env` (or the environment) to the
 read-only login and production host the doctor must see. They are not committed; with either unset,
@@ -251,6 +305,15 @@ requires that connection to resolve to the login in `MSSQL_MCP_VERIFY_LOGIN` on 
 `scripts/lib.mjs` holds the shared contract: expected login/database, the bounded read statement,
 the write probes, the evidence roots, the redactor, and the two session implementations
 (`RawSession` for hand-written frames, `sdkSession` for the independent SDK client).
+
+`scripts/mysql-lib.mjs` holds the MySQL half: the read target, the fifteen write probes, a direct
+connection that accepts Laragon's empty password, and the fingerprint and catalog queries. It
+re-exports the session and reporting helpers from `lib.mjs` so a MySQL helper imports one file.
+
+Set `MSSQL_MCP_VERIFY_MYSQL_CONNECTION` to drive a different configured MySQL connection, and
+`MSSQL_MCP_VERIFY_MYSQL_LOGIN` to make the MySQL helpers refuse any other login. The second is
+optional because the local server has one account; leaving it unset means the configured login is
+used and reported, not checked.
 
 ## Defects this skill has reported
 
